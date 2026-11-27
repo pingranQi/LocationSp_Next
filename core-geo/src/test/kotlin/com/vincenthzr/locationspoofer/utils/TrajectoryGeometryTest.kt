@@ -2,6 +2,7 @@ package com.vincenthzr.locationspoofer.utils
 
 import com.vincenthzr.locationspoofer.utils.CoordinateUtils.LatLng
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -46,6 +47,29 @@ class TrajectoryGeometryTest {
         val pts = listOf(p(0.0, 0.0), p(1.0, 1.0))
         assertEquals(2, TrajectoryGeometry.closeLoopIfNear(pts, thresholdM = 15.0).size)
     }
+
+    @Test
+    fun `closeLoop rejects invalid thresholds`() {
+        val pts = listOf(p(0.0, 0.0), p(50.0, 10.0), p(100.0, 20.0))
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.closeLoopIfNear(pts, Double.NaN)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.closeLoopIfNear(pts, -1.0)
+        }
+    }
+
+    @Test
+    fun `heading rejects invalid coordinates`() {
+        val pts = listOf(
+            TrajectoryPoint(0.0, 0.0, 0.0),
+            TrajectoryPoint(Double.NaN, 1.0, 1.0)
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.headingAt(pts, 1)
+        }
+    }
+
 
     @Test
     fun `heading falls back to the direction between points`() {

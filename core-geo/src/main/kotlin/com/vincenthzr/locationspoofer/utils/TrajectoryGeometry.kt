@@ -24,6 +24,7 @@ object TrajectoryGeometry {
         points: List<TrajectoryPoint>,
         thresholdM: Double = DEFAULT_CLOSE_THRESHOLD_M
     ): List<TrajectoryPoint> {
+        require(thresholdM.isFinite() && thresholdM >= 0.0) { "loop threshold must be finite and non-negative" }
         if (points.size < 3) return points
         val first = points.first()
         val last = points.last()
@@ -59,6 +60,10 @@ object TrajectoryGeometry {
         index: Int,
         @Suppress("UNUSED_PARAMETER") gpsBearingDeg: Double? = null
     ): Double {
+        require(points.all { point ->
+            point.lat.isFinite() && point.lng.isFinite() &&
+                point.lat in -90.0..90.0 && point.lng in -180.0..180.0
+        }) { "heading points must contain finite, in-range coordinates" }
         if (points.size < 2) return 0.0
         val i = index.coerceIn(1, points.size - 1)
         val window = 2
