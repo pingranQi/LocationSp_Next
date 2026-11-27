@@ -152,7 +152,12 @@ jobs:
       - name: Run core-data unit tests
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon :core-data:test 2>&1 | tee -a unit-test.log || exit ${PIPESTATUS[0]}
+          RC=0
+          # Room KSP exports one schema per variant; run variants sequentially to avoid shared-output races.
+          for TASK in :core-data:testScopedDebugUnitTest :core-data:testGlobalDebugUnitTest; do
+            ./gradlew --no-daemon "$TASK" 2>&1 | tee -a unit-test.log || RC=${PIPESTATUS[0]}
+          done
+          exit "$RC"
 
       # 不论成败都上传测试报告与原始日志：失败时能从 artifact 直接看到编译/断言错误，
       # 不用登录进网页日志里翻。
