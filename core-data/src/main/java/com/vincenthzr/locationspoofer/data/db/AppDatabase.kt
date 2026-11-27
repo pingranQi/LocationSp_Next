@@ -34,6 +34,43 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // v5 adds vendor metadata to known Wi-Fi APs and stores the currently connected AP per location.
+                db.execSQL("ALTER TABLE wifi_devices ADD COLUMN vendor TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS location_connected_wifi (" +
+                        "locationId INTEGER NOT NULL, " +
+                        "bssid TEXT NOT NULL, " +
+                        "ssid TEXT NOT NULL, " +
+                        "vendor TEXT NOT NULL, " +
+                        "macAddress TEXT NOT NULL, " +
+                        "frequency INTEGER NOT NULL, " +
+                        "linkSpeed INTEGER NOT NULL, " +
+                        "level INTEGER NOT NULL, " +
+                        "capabilities TEXT NOT NULL, " +
+                        "networkId INTEGER NOT NULL, " +
+                        "wifiStandard INTEGER NOT NULL, " +
+                        "PRIMARY KEY(locationId), " +
+                        "FOREIGN KEY(locationId) REFERENCES location_records(id) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+            }
+        }
+
+        private val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // v6 adds user-saved routes; existing collection tables remain untouched.
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS saved_routes (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "name TEXT NOT NULL, " +
+                        "pointsJson TEXT NOT NULL, " +
+                        "timestamp INTEGER NOT NULL)"
+                )
+            }
+        }
+
         private val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE location_records ADD COLUMN selectedWifiBssid TEXT")
@@ -87,7 +124,16 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "environment_database"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6,
+                        MIGRATION_6_7,
+                        MIGRATION_7_8,
+                        MIGRATION_8_9,
+                        MIGRATION_9_10,
+                        MIGRATION_10_11
+                    )
                     // Do not silently drop user-collected locations/routes when a migration path is missing.
                     // Add an explicit, data-preserving migration before supporting any additional schema version.
                     .build()
