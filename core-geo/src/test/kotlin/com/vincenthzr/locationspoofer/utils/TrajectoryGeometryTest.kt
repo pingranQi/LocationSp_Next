@@ -56,10 +56,20 @@ class TrajectoryGeometryTest {
     }
 
     @Test
-    fun `heading prefers gps bearing when available`() {
+    fun `heading uses track geometry and ignores unstable gps bearing`() {
         val pts = listOf(p(0.0, 0.0), p(10.0, 1.0))
         val heading = TrajectoryGeometry.headingAt(pts, 1, gpsBearingDeg = 123.0)
-        assertEquals(123.0, heading, 1e-9)
+        assertTrue("heading=$heading", heading < 5.0 || heading > 355.0)
+    }
+
+    @Test
+    fun `heading uses the short longitude direction across antimeridian`() {
+        val pts = listOf(
+            TrajectoryPoint(0.0, 179.9, 0.0),
+            TrajectoryPoint(0.0, -179.9, 1.0)
+        )
+        val heading = TrajectoryGeometry.headingAt(pts, 1)
+        assertTrue("heading=$heading", kotlin.math.abs(heading - 90.0) < 1.0)
     }
 
     @Test

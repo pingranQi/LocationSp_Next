@@ -44,7 +44,7 @@ object GeoMath {
     /** 从 start 沿 bearing 方向前进 meters 米后的位置 */
     fun destination(start: LatLng, bearingDeg: Double, meters: Double): LatLng {
         require(start.lat.isFinite() && start.lng.isFinite() && start.lat in -90.0..90.0 && start.lng in -180.0..180.0)
-        require(bearingDeg.isFinite() && meters.isFinite() && meters >= 0.0)
+        require(bearingDeg.isFinite() && meters.isFinite())
         val angular = meters / EARTH_RADIUS_M
         val bearingRad = Math.toRadians(bearingDeg)
         val lat1 = Math.toRadians(start.lat)
@@ -79,6 +79,7 @@ class RoutePath(val points: List<LatLng>) {
     }
 
     fun positionAt(distanceTraveled: Double, stopAtDestination: Boolean): Position {
+        require(distanceTraveled.isFinite()) { "distance traveled must be finite" }
         require(isValid) { "route needs at least two distinct points" }
         val traveled = distanceTraveled.coerceAtLeast(0.0)
 

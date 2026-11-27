@@ -71,7 +71,7 @@ object TrajectoryGeometry {
             val b = points[k]
             val dLng = ((b.lng - a.lng + 540.0) % 360.0) - 180.0
             val dx = dLng * 111320.0 * kotlin.math.cos(Math.toRadians(b.lat))
-            val dy = b.lat - a.lat
+            val dy = (b.lat - a.lat) * 111320.0
             if (abs(dx) > 0.01 || abs(dy) > 0.01) {
                 sx += dx
                 sy += dy
