@@ -1,6 +1,5 @@
 package com.vincenthzr.locationspoofer.utils
 
-import android.content.Context
 import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -40,7 +39,12 @@ internal object EncryptedTokenStore {
             prefs.edit().remove(name).apply()
             return
         }
-        val encoded = try { encrypt(value) } catch (_: Exception) { return }
+        val encoded = try {
+            encrypt(value)
+        } catch (_: Exception) {
+            prefs.edit().remove(name).apply()
+            return
+        }
         prefs.edit().putString(name, encoded).apply()
     }
 

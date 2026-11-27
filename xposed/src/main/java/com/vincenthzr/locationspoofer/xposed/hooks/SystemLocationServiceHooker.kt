@@ -147,6 +147,7 @@ internal fun clearSystemLocationReloadState() {
     activeGnssNmeaBinders.clear()
     activeCallbackBinders.clear()
     activePendingIntents.clear()
+    pendingIntentRegisteredAt.clear()
     spoofedListenerInstances.clear()
 }
 

@@ -76,23 +76,25 @@ class UpdateManager(private val context: Context) {
             val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
             require(actualSha256 == normalized) { "APK SHA-256 mismatch; installation blocked" }
 
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val packageInfoFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 PackageManager.GET_SIGNING_CERTIFICATES
             } else {
                 @Suppress("DEPRECATION")
                 PackageManager.GET_SIGNATURES
             }
-            val archive = context.packageManager.getPackageArchiveInfo(temp.absolutePath, flags)
+            val archive = context.packageManager.getPackageArchiveInfo(temp.absolutePath, packageInfoFlags)
                 ?: error("Downloaded file is not a valid APK")
             require(archive.packageName == context.packageName) { "APK package name does not match installed app" }
-            val installed = context.packageManager.getPackageInfo(context.packageName, flags)
-            require(signerDigests(archive) == signerDigests(installed)) {
-                "APK signing certificate differs from the installed application"
+            val installed = context.packageManager.getPackageInfo(context.packageName, packageInfoFlags)
+            val archiveSigners = signerDigests(archive)
+            val installedSigners = signerDigests(installed)
+            require(archiveSigners.isNotEmpty() && archiveSigners == installedSigners) {
+                "APK signing certificate differs from the installed application or is unavailable"
             }
 
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
             }
             context.startActivity(intent)
         } finally {
