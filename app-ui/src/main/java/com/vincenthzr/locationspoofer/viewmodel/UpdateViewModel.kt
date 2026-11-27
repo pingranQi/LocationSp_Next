@@ -92,6 +92,7 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
 
                     if (downloadUrl == null && downloadUrl32Bit != null) {
                         downloadUrl = downloadUrl32Bit
+                        downloadSha256 = download32Sha256
                     }
 
                     releaseList.add(

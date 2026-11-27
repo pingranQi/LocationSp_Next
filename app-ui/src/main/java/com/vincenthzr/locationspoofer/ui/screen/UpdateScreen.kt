@@ -214,7 +214,7 @@ fun UpdateScreen(
                         isMergedRelease = isMerged,
                         mergedCount = missed.size,
                         uiState = uiState,
-                        onDownload = { url, version -> updateViewModel.startDownload(url, version) }
+                        onDownload = { url, version, digest -> updateViewModel.startDownload(url, version, digest) }
                     )
                 }
             }
