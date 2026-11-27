@@ -1,0 +1,81 @@
+package com.vincenthzr.locationspoofer.utils
+
+import android.content.Context
+import android.content.SharedPreferences
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+
+/** AES-256-GCM token-at-rest encryption backed by AndroidKeyStore. */
+internal object EncryptedTokenStore {
+    private const val KEY_ALIAS = "locationspoofer.api.tokens.v1"
+    private const val PREFIX = "enc:v1:"
+    private const val TRANSFORMATION = "AES/GCM/NoPadding"
+
+    fun read(context: Context, prefs: SharedPreferences, name: String): String {
+        val stored = prefs.getString(name, null) ?: return ""
+        if (!stored.startsWith(PREFIX)) {
+            // One-time plaintext migration. Do not fall back to plaintext if encryption fails.
+            return try {
+                prefs.edit().putString(name, encrypt(stored)).commit()
+                stored
+            } catch (_: Exception) {
+                ""
+            }
+        }
+        return try {
+            decrypt(stored.removePrefix(PREFIX))
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    fun write(context: Context, prefs: SharedPreferences, name: String, value: String) {
+        if (value.isEmpty()) {
+            prefs.edit().remove(name).apply()
+            return
+        }
+        val encoded = try { encrypt(value) } catch (_: Exception) { return }
+        prefs.edit().putString(name, encoded).apply()
+    }
+
+    private fun key(): SecretKey {
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
+                .build()
+        )
+        return generator.generateKey()
+    }
+
+    private fun encrypt(value: String): String {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, key())
+        val packed = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        return PREFIX + Base64.encodeToString(packed, Base64.NO_WRAP)
+    }
+
+    private fun decrypt(encoded: String): String {
+        val packed = Base64.decode(encoded, Base64.NO_WRAP)
+        require(packed.size > 12) { "Invalid encrypted token payload" }
+        val iv = packed.copyOfRange(0, 12)
+        val ciphertext = packed.copyOfRange(12, packed.size)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
+        return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    }
+}

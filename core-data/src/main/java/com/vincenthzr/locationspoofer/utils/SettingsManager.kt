@@ -10,6 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class SettingsManager(context: Context) {
+    private val appContext = context.applicationContext
     private val prefs: SharedPreferences =
         context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
@@ -64,12 +65,12 @@ class SettingsManager(context: Context) {
         set(value) = prefs.edit().putString("custom_search_url", value).apply()
 
     var wigleApiToken: String
-        get() = prefs.getString("wigle_api_token", "") ?: ""
-        set(value) = prefs.edit().putString("wigle_api_token", value).apply()
+        get() = EncryptedTokenStore.read(appContext, prefs, "wigle_api_token")
+        set(value) = EncryptedTokenStore.write(appContext, prefs, "wigle_api_token", value)
 
     var opencellidApiToken: String
-        get() = prefs.getString("opencellid_api_token", "") ?: ""
-        set(value) = prefs.edit().putString("opencellid_api_token", value).apply()
+        get() = EncryptedTokenStore.read(appContext, prefs, "opencellid_api_token")
+        set(value) = EncryptedTokenStore.write(appContext, prefs, "opencellid_api_token", value)
 
     var mapType: String
         get() = prefs.getString("map_type", "NORMAL") ?: "NORMAL"
