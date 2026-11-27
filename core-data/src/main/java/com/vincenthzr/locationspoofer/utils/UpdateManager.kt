@@ -26,7 +26,7 @@ class UpdateManager(private val context: Context) {
             .setAllowedOverRoaming(true)
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val downloadId = dm.enqueue(request)
-        check(downloadId != DownloadManager.INVALID_DOWNLOAD_ID) {
+        check(downloadId > 0L) {
             "Android DownloadManager rejected the APK download request"
         }
         return downloadId
