@@ -105,6 +105,8 @@ object TrajectoryGeometry {
         lengthM: Double = DEFAULT_ARROW_LENGTH_M,
         spreadDeg: Double = DEFAULT_ARROW_SPREAD_DEG
     ): Pair<List<Pair<Double, Double>>, List<Pair<Double, Double>>> {
+        require(lengthM.isFinite() && lengthM >= 0.0) { "arrow length must be finite and non-negative" }
+        require(spreadDeg.isFinite() && spreadDeg in 0.0..180.0) { "arrow spread must be between 0 and 180 degrees" }
         val half = spreadDeg / 2.0
         val left = destinationFrom(centerLat, centerLng, headingDeg - half, lengthM)
         val right = destinationFrom(centerLat, centerLng, headingDeg + half, lengthM)

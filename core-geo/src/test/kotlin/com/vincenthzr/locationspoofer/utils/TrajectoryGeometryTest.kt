@@ -97,6 +97,16 @@ class TrajectoryGeometryTest {
     }
 
     @Test
+    fun `arrow geometry rejects invalid dimensions`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.arrowPoints(30.0, 120.0, 0.0, lengthM = Double.NaN)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.arrowPoints(30.0, 120.0, 0.0, spreadDeg = 181.0)
+        }
+    }
+
+    @Test
     fun `arrow points are ahead of the center along the heading`() {
         val (left, right) = TrajectoryGeometry.arrowPoints(30.0, 120.0, 0.0, lengthM = 6.0, spreadDeg = 40.0)
         assertEquals(2, left.size)
