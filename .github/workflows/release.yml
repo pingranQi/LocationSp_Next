@@ -237,6 +237,13 @@ jobs:
             exit 1
           fi
 
+          # Publish a detached checksum manifest alongside the APK assets.
+          (
+            cd "$DIST_DIR"
+            sha256sum LocationSp_Next-*.apk > SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
