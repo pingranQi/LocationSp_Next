@@ -124,7 +124,7 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("release")
-            buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsApiKey\"")
+            buildConfigField("String", "GOOGLE_MAPS_API_KEY", kotlinStringLiteral(googleMapsApiKey))
         }
     }
     compileOptions {
