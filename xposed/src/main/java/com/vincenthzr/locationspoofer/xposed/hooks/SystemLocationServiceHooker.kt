@@ -701,7 +701,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                             val pendingIntent = chain.args.firstOrNull { it is android.app.PendingIntent } as? android.app.PendingIntent
                             if (pendingIntent != null) {
                                 val pkgName = explicitPkg ?: pendingIntent.creatorPackage ?: "unknown"
-                                activePendingIntents[pendingIntent] = pkgName
+                                trackPendingIntent(pendingIntent, pkgName)
                                 logLoc("[SysHook] Registered target location PendingIntent for $pkgName (total active: ${activePendingIntents.size})")
                             }
                         }
@@ -1211,7 +1211,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                             val pi = chain.args.firstOrNull { it is android.app.PendingIntent } as? android.app.PendingIntent
                             if (pi != null) {
                                 val targetPkg = pkgName ?: pi.creatorPackage ?: "target"
-                                activePendingIntents[pi] = targetPkg
+                                trackPendingIntent(pi, targetPkg)
                                 logLoc("[SysLoc] LocationProviderManager.$mName PendingIntent captured for $targetPkg")
                             }
                         }
