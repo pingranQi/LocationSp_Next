@@ -98,10 +98,16 @@ private val pendingIntentRegisteredAt = ConcurrentHashMap<android.app.PendingInt
 private const val PENDING_INTENT_TTL_MS = 24L * 60L * 60L * 1000L
 private const val MAX_PENDING_INTENT_REGISTRATIONS = 512
 
-private fun trackPendingIntent(pendingIntent: android.app.PendingIntent, packageName: String) {
+private fun trackPendingIntent(
+    pendingIntent: android.app.PendingIntent,
+    packageName: String,
+    registeredAt: Long = System.currentTimeMillis()
+) {
     val now = System.currentTimeMillis()
     pendingIntentRegisteredAt.entries.removeIf { now - it.value > PENDING_INTENT_TTL_MS }
     activePendingIntents.keys.removeIf { it !in pendingIntentRegisteredAt.keys }
+    // Do not resurrect a registration that expired while the Xposed module was being reloaded.
+    if (now - registeredAt > PENDING_INTENT_TTL_MS) return
     if (activePendingIntents.size >= MAX_PENDING_INTENT_REGISTRATIONS && !activePendingIntents.containsKey(pendingIntent)) {
         val oldest = pendingIntentRegisteredAt.minByOrNull { it.value }?.key
         if (oldest != null) {
@@ -110,7 +116,7 @@ private fun trackPendingIntent(pendingIntent: android.app.PendingIntent, package
         }
     }
     activePendingIntents[pendingIntent] = packageName
-    pendingIntentRegisteredAt[pendingIntent] = now
+    pendingIntentRegisteredAt[pendingIntent] = registeredAt
 }
 
 private fun removePendingIntent(pendingIntent: android.app.PendingIntent) {
@@ -136,7 +142,11 @@ internal fun saveSystemLocationReloadState(): Array<Any> = arrayOf(
         arrayOf<Any>(binder, info.callback, info.packageName, info.registeredTime)
     },
     activePendingIntents.mapTo(java.util.ArrayList()) { (pendingIntent, packageName) ->
-        arrayOf<Any>(pendingIntent, packageName)
+        arrayOf<Any>(
+            pendingIntent,
+            packageName,
+            pendingIntentRegisteredAt[pendingIntent] ?: System.currentTimeMillis()
+        )
     }
 )
 
@@ -186,7 +196,8 @@ internal fun LocationHooker.restoreSystemLocationReloadState(value: Any?) {
     }
     rows(4).forEach { row ->
         val pendingIntent = row[0] as android.app.PendingIntent
-        trackPendingIntent(pendingIntent, row[1] as String)
+        val registeredAt = row.getOrNull(2) as? Long ?: System.currentTimeMillis()
+        trackPendingIntent(pendingIntent, row[1] as String, registeredAt)
     }
 }
 
