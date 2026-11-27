@@ -741,7 +741,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                     }
                     val pendingIntent = chain.args.firstOrNull { it is android.app.PendingIntent } as? android.app.PendingIntent
                     if (pendingIntent != null) {
-                        activePendingIntents.remove(pendingIntent)
+                        removePendingIntent(pendingIntent)
                     }
                 } catch (_: Throwable) {}
                 return@hookAllMethods chain.proceed(chain.args.toTypedArray())
