@@ -596,7 +596,12 @@ internal fun LocationHooker.dispatchBatchResultsToCallback(callback: Any, result
 // BLE 扫描结果伪造的核心分发逻辑
 internal val syntheticBleDelivery = com.vincenthzr.locationspoofer.xposed.utils.CallScope<Boolean>()
 
-internal fun LocationHooker.deliverBleScanResults(config: JSONObject, callback: Any, cl: ClassLoader) {
+internal fun LocationHooker.deliverBleScanResults(
+    config: JSONObject,
+    callback: Any,
+    cl: ClassLoader,
+    isCurrentScan: () -> Boolean = { true }
+) {
         val mainHandler = Handler(Looper.getMainLooper())
         val scanRecordClass = XposedHelpers.findClassIfExists("android.bluetooth.le.ScanRecord", cl)
         if (!config.optBoolean("mock_bluetooth", true)) return
@@ -636,6 +641,7 @@ internal fun LocationHooker.deliverBleScanResults(config: JSONObject, callback: 
                 if (scanResultObj != null) {
                     results.add(scanResultObj)
                     mainHandler.post {
+                        if (!isCurrentScan()) return@post
                         try {
                             syntheticBleDelivery.withValue(true) { dispatchScanResultToCallback(callback, scanResultObj) }
                             XposedBridge.log("[LocationSpoofer] 成功派发 onScanResult 给 ${callback.javaClass.name} | MAC=$address RSSI=$rssi 广播包长=${rawBytes.size}")
@@ -652,6 +658,7 @@ internal fun LocationHooker.deliverBleScanResults(config: JSONObject, callback: 
         }
         if (results.isNotEmpty()) {
             mainHandler.post {
+                if (!isCurrentScan()) return@post
                 try {
                     syntheticBleDelivery.withValue(true) { dispatchBatchResultsToCallback(callback, results) }
                 } catch (_: Throwable) {}
@@ -664,22 +671,27 @@ internal fun LocationHooker.startBleTimer(callback: Any, cl: ClassLoader) {
         bleScanTimers.remove(callback)?.cancel()
         val timer = java.util.Timer("LocationSpoofer-BleTimer", true)
         bleScanTimers[callback] = timer
+        val isCurrentScan = { bleScanTimers[callback] === timer }
 
-        // 立即执行第一次
+        // 立即执行第一次；queued callbacks are discarded after stop/replacement.
         val config = readConfig()
         if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-            deliverBleScanResults(config, callback, cl)
+            deliverBleScanResults(config, callback, cl, isCurrentScan)
         }
 
         timer.schedule(object : java.util.TimerTask() {
             override fun run() {
+                if (!isCurrentScan()) {
+                    cancel()
+                    return
+                }
                 val cfg = readConfig()
                 if (cfg == null || !cfg.optBoolean("active", false) || !cfg.optBoolean("mock_bluetooth", true)) {
                     cancel()
-                    bleScanTimers.remove(callback)
+                    bleScanTimers.remove(callback, timer)
                     return
                 }
-                deliverBleScanResults(cfg, callback, cl)
+                deliverBleScanResults(cfg, callback, cl, isCurrentScan)
             }
         }, 200L, 200L)
     }
@@ -688,7 +700,12 @@ internal fun LocationHooker.stopBleTimer(callback: Any) {
         bleScanTimers.remove(callback)?.cancel()
     }
 
-internal fun LocationHooker.deliverOldLeScanResults(config: JSONObject, callback: Any, cl: ClassLoader) {
+internal fun LocationHooker.deliverOldLeScanResults(
+    config: JSONObject,
+    callback: Any,
+    cl: ClassLoader,
+    isCurrentScan: () -> Boolean = { true }
+) {
         val mainHandler = Handler(Looper.getMainLooper())
         if (!config.optBoolean("mock_bluetooth", true)) return
         val bluetoothArray = config.optJSONArray("bluetooth_json") ?: return
@@ -706,6 +723,7 @@ internal fun LocationHooker.deliverOldLeScanResults(config: JSONObject, callback
 
                 val device = createBluetoothDevice(cl, address) ?: continue
                 mainHandler.post {
+                    if (!isCurrentScan()) return@post
                     try {
                         XposedHelpers.callMethod(callback, "onLeScan", device, rssi, rawBytes)
                     } catch (_: Throwable) {}
@@ -720,21 +738,26 @@ internal fun LocationHooker.startOldLeScanTimer(callback: Any, cl: ClassLoader) 
         bleScanTimers.remove(callback)?.cancel()
         val timer = java.util.Timer("LocationSpoofer-OldBleTimer", true)
         bleScanTimers[callback] = timer
+        val isCurrentScan = { bleScanTimers[callback] === timer }
 
         val config = readConfig()
         if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-            deliverOldLeScanResults(config, callback, cl)
+            deliverOldLeScanResults(config, callback, cl, isCurrentScan)
         }
 
         timer.schedule(object : java.util.TimerTask() {
             override fun run() {
+                if (!isCurrentScan()) {
+                    cancel()
+                    return
+                }
                 val cfg = readConfig()
                 if (cfg == null || !cfg.optBoolean("active", false) || !cfg.optBoolean("mock_bluetooth", true)) {
                     cancel()
-                    bleScanTimers.remove(callback)
+                    bleScanTimers.remove(callback, timer)
                     return
                 }
-                deliverOldLeScanResults(cfg, callback, cl)
+                deliverOldLeScanResults(cfg, callback, cl, isCurrentScan)
             }
         }, 200L, 200L)
     }
