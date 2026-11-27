@@ -540,11 +540,25 @@ internal fun MainViewModel.parseImportPackage(
     }
 }
 
+private const val MAX_IMPORT_PACKAGE_BYTES = 20 * 1024 * 1024
+
 private fun MainViewModel.parseImportPackageInternal(
     uri: android.net.Uri
 ): com.vincenthzr.locationspoofer.data.db.LocationSpooferDataPackage? {
     val jsonStr = context.contentResolver.openInputStream(uri)?.use { inputStream ->
-        inputStream.bufferedReader().use { it.readText() }
+        val output = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        var totalBytes = 0
+        while (true) {
+            val read = inputStream.read(buffer)
+            if (read < 0) break
+            totalBytes += read
+            require(totalBytes <= MAX_IMPORT_PACKAGE_BYTES) {
+                "Import file exceeds the 20 MiB safety limit"
+            }
+            output.write(buffer, 0, read)
+        }
+        output.toString(Charsets.UTF_8.name())
     } ?: return null
 
     val json = kotlinx.serialization.json.Json {

@@ -96,10 +96,13 @@ class SpoofingService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
-        } catch (e: Throwable) {
-            e.printStackTrace()
+            isRunning = true
+        } catch (e: Exception) {
+            android.util.Log.e("LocationSpoofer", "Unable to start foreground service", e)
+            isRunning = false
+            releaseWakeLock()
+            stopSelf()
         }
-        isRunning = true
     }
 
     private fun acquireWakeLock() {

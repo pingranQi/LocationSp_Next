@@ -21,9 +21,6 @@ on:
 
 permissions:
   contents: write
-  checks: write
-  pull-requests: write
-  issues: write
 
 # 产物命名：LocationSp_Next-{scheme}-{abi}.apk
 # 因为开了 ABI 拆分 + scoped/global 两个变体，一次构建最多产出 4 个 APK，后缀不能省。
@@ -143,8 +140,15 @@ jobs:
 
       - name: Provide Google Maps key
         if: ${{ inputs.google_maps_api_key != '' }}
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ inputs.google_maps_api_key }}
         run: |
-          echo "GOOGLE_MAPS_API_KEY: ${{ inputs.google_maps_api_key }}" > local.yml
+          # Validate before adding to the job environment; never interpolate dispatch input into shell code.
+          if [[ ! "$GOOGLE_MAPS_API_KEY" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "::error::Google Maps API key contains unsupported characters"
+            exit 1
+          fi
+          echo "GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY" >> "$GITHUB_ENV"
 
       # 单元测试：core-geo 是纯 Kotlin/JVM 模块，不需要 Android SDK，秒级跑完。
       # 失败则直接阻断构建，不生成 APK——配速曲线算错时不该产出 APK。
@@ -162,6 +166,11 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon :core-data:test 2>&1 | tee -a unit-test.log || exit ${PIPESTATUS[0]}
 
+      - name: Run Xposed unit tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :xposed:test 2>&1 | tee -a unit-test.log || exit ${PIPESTATUS[0]}
+
       # 不论成败都上传测试报告与原始日志：失败时能从 artifact 直接看到编译/断言错误，
       # 不用登录进网页日志里翻。
       - name: Upload unit test reports
@@ -175,6 +184,8 @@ jobs:
             core-geo/build/test-results/test
             core-data/build/reports/tests
             core-data/build/test-results
+            xposed/build/reports/tests/test
+            xposed/build/test-results/test
           if-no-files-found: warn
           retention-days: 7
 

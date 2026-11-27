@@ -7,9 +7,14 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class OpenCellIdClient {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(20, TimeUnit.SECONDS)
+        .build()
 
     /** 验证 token 是否有效 */
     suspend fun validateToken(token: String): Boolean = withContext(Dispatchers.IO) {
@@ -22,19 +27,16 @@ class OpenCellIdClient {
             val request = Request.Builder()
                 .url(url)
                 .build()
-            val response = client.newCall(request).execute()
-            if (response.isSuccessful) {
-                val body = response.body?.string() ?: return@withContext false
-                val json = JSONObject(body)
-                if (json.has("error")) {
-                    // code 1 表示“未找到基站”，这实际上验证了密钥存在并且有效。
-                    // code 2 表示“API Key not known”或其他代码指示密钥无效。
-                    json.optInt("code") == 1
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    false
                 } else {
-                    true
+                    val body = response.body?.string()
+                    if (body == null) false else {
+                        val json = JSONObject(body)
+                        if (json.has("error")) json.optInt("code") == 1 else true
+                    }
                 }
-            } else {
-                false
             }
         } catch (e: Exception) {
             false
@@ -58,25 +60,17 @@ class OpenCellIdClient {
                         .url(url)
                         .build()
 
-                    val response = client.newCall(request).execute()
-                    val code = response.code
-                    if (response.isSuccessful) {
-                        val body = response.body?.string()
-                        if (body == null) {
-                            continue
+                    val normalized = client.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            null
+                        } else {
+                            val body = response.body?.string()
+                            val cells = body?.let { JSONObject(it).optJSONArray("cells") }
+                            cells?.takeIf { it.length() > 0 }?.let(::normalizeOpenCellIdCells)
                         }
-                        val jsonObject = JSONObject(body)
-                        val cells = jsonObject.optJSONArray("cells")
-                        if (cells == null || cells.length() == 0) {
-                            continue
-                        }
-                        val normalizedCells = normalizeOpenCellIdCells(cells)
-                        if (normalizedCells.length() == 0) {
-                            continue
-                        }
-                        return@withContext normalizedCells.toString()
-                    } else {
-                        // 请求未成功，尝试下一个半径
+                    }
+                    if (normalized != null && normalized.length() > 0) {
+                        return@withContext normalized.toString()
                     }
                 }
                 return@withContext "[]"
