@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # 合规自检：仓库内不得出现任何第三方地图 Key / 他人样式 ID。
       # 放在最前面，一旦有人误提交 Key 立刻失败，不会产出带凭证的安装包。
@@ -38,7 +38,7 @@ jobs:
         run: bash scripts/verify-no-keys.sh
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -158,7 +158,7 @@ jobs:
       # 不用登录进网页日志里翻。
       - name: Upload unit test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unit-test-report
           path: |
@@ -240,7 +240,7 @@ jobs:
       # 而 artifact 下载接口是公开的，便于外部直接取到真实报错。
       - name: Upload build log
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gradle-build-log
           path: |
@@ -311,7 +311,7 @@ jobs:
 
       - name: Publish APKs to GitHub Release
         if: ${{ steps.build.outcome == 'success' }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: debug-build-${{ github.run_number }}
           name: LocationSp_Next Debug 构建 ${{ github.run_number }}
