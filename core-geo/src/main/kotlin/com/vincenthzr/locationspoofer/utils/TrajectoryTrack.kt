@@ -24,7 +24,8 @@ data class TrajectoryPoint(
  * 只保存“位置 + 时刻”，不保存速度：速度可由相邻两点反推，既省一份数据，
  * 也能容忍 GPS 的抖动（抖动会被相邻点平均掉）。
  */
-class TrajectoryTrack(val points: List<TrajectoryPoint>) {
+class TrajectoryTrack(points: List<TrajectoryPoint>) {
+    val points: List<TrajectoryPoint> = points.toList()
 
     init {
         require(points.size >= 2) { "a trajectory needs at least two points" }

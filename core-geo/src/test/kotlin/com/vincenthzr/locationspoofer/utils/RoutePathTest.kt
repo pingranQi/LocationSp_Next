@@ -39,6 +39,15 @@ class RoutePathTest {
     }
 
     @Test
+    fun `defensively copies source point list`() {
+        val source = mutableListOf(a, b)
+        val path = RoutePath(source)
+        source[1] = LatLng(Double.NaN, Double.NaN)
+        assertEquals(1000.0, path.totalDistance, 0.01)
+        assertEquals(500.0, GeoMath.distance(a, LatLng(path.positionAt(500.0, false).lat, path.positionAt(500.0, false).lng)), 0.5)
+    }
+
+    @Test
     fun `interpolates across the antimeridian using the short direction`() {
         val west = LatLng(0.0, 179.9)
         val east = LatLng(0.0, -179.9)

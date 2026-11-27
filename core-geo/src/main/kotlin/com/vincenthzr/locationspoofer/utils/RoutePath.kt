@@ -61,7 +61,8 @@ object GeoMath {
  * 规则：首尾相距 5 米以内视为闭环，走到终点后从起点继续；否则走到终点后原路折返，来回往复。
  * stopAtDestination 为真时走到终点就停下。
  */
-class RoutePath(val points: List<LatLng>) {
+class RoutePath(points: List<LatLng>) {
+    val points: List<LatLng> = points.toList()
 
     data class Position(val lat: Double, val lng: Double, val bearing: Float, val arrived: Boolean)
 

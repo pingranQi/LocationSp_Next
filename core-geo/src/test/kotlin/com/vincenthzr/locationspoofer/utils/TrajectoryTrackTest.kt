@@ -136,6 +136,15 @@ class TrajectoryTrackTest {
     }
 
     @Test
+    fun `defensively copies source point list`() {
+        val source = straightTrack().points.toMutableList()
+        val track = TrajectoryTrack(source)
+        source[1] = TrajectoryPoint(Double.NaN, Double.NaN, Double.NaN)
+        assertEquals(10.0, track.durationSec, 1e-9)
+        assertEquals(2.0, track.speedAt(0.5), 1e-6)
+    }
+
+    @Test
     fun `rejects non-finite and out-of-range trajectory coordinates`() {
         assertThrows(IllegalArgumentException::class.java) {
             TrajectoryTrack(listOf(TrajectoryPoint(0.0, 0.0, 0.0), TrajectoryPoint(Double.NaN, 1.0, 1.0)))
