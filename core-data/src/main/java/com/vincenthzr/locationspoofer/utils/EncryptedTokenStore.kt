@@ -17,12 +17,12 @@ internal object EncryptedTokenStore {
     private const val PREFIX = "enc:v1:"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
 
-    fun read(context: Context, prefs: SharedPreferences, name: String): String {
+    fun read(prefs: SharedPreferences, name: String): String {
         val stored = prefs.getString(name, null) ?: return ""
         if (!stored.startsWith(PREFIX)) {
             // One-time plaintext migration. Do not fall back to plaintext if encryption fails.
             return try {
-                prefs.edit().putString(name, encrypt(stored)).commit()
+                check(prefs.edit().putString(name, encrypt(stored)).commit())
                 stored
             } catch (_: Exception) {
                 ""
@@ -35,7 +35,7 @@ internal object EncryptedTokenStore {
         }
     }
 
-    fun write(context: Context, prefs: SharedPreferences, name: String, value: String) {
+    fun write(prefs: SharedPreferences, name: String, value: String) {
         if (value.isEmpty()) {
             prefs.edit().remove(name).apply()
             return

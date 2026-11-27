@@ -94,6 +94,29 @@ private val activeCallbackBinders = ConcurrentHashMap<IBinder, CallbackRegistrat
 
 // 存储当前活跃的目标应用 PendingIntent 映射
 private val activePendingIntents = ConcurrentHashMap<android.app.PendingIntent, String>()
+private val pendingIntentRegisteredAt = ConcurrentHashMap<android.app.PendingIntent, Long>()
+private const val PENDING_INTENT_TTL_MS = 24L * 60L * 60L * 1000L
+private const val MAX_PENDING_INTENT_REGISTRATIONS = 512
+
+private fun trackPendingIntent(pendingIntent: android.app.PendingIntent, packageName: String) {
+    val now = System.currentTimeMillis()
+    pendingIntentRegisteredAt.entries.removeIf { now - it.value > PENDING_INTENT_TTL_MS }
+    activePendingIntents.keys.removeIf { it !in pendingIntentRegisteredAt.keys }
+    if (activePendingIntents.size >= MAX_PENDING_INTENT_REGISTRATIONS && !activePendingIntents.containsKey(pendingIntent)) {
+        val oldest = pendingIntentRegisteredAt.minByOrNull { it.value }?.key
+        if (oldest != null) {
+            pendingIntentRegisteredAt.remove(oldest)
+            activePendingIntents.remove(oldest)
+        }
+    }
+    activePendingIntents[pendingIntent] = packageName
+    pendingIntentRegisteredAt[pendingIntent] = now
+}
+
+private fun removePendingIntent(pendingIntent: android.app.PendingIntent) {
+    activePendingIntents.remove(pendingIntent)
+    pendingIntentRegisteredAt.remove(pendingIntent)
+}
 
 @Volatile
 private var isHeartbeatTimerStarted = false
@@ -160,7 +183,10 @@ internal fun LocationHooker.restoreSystemLocationReloadState(value: Any?) {
         ensureCallbackHooked(callback, "onLocation")
         runCatching { ModuleBinderDeaths.watch(binder) { activeCallbackBinders.remove(binder) } }
     }
-    rows(4).forEach { row -> activePendingIntents[row[0] as android.app.PendingIntent] = row[1] as String }
+    rows(4).forEach { row ->
+        val pendingIntent = row[0] as android.app.PendingIntent
+        trackPendingIntent(pendingIntent, row[1] as String)
+    }
 }
 
 /** 在 args 里递归找出所有 android.location.Location（单个、List、或 LocationResult 形态）并就地改写 */
@@ -1438,6 +1464,8 @@ private fun LocationHooker.hookPendingIntentDelivery(classLoader: ClassLoader) {
         val config = readConfig()
         if (config != null && config.optBoolean("active", false)) {
             val pi = chain.thisObject as? android.app.PendingIntent
+            pendingIntentRegisteredAt.entries.removeIf { System.currentTimeMillis() - it.value > PENDING_INTENT_TTL_MS }
+            activePendingIntents.keys.removeIf { it !in pendingIntentRegisteredAt.keys }
             val isTarget = if (pi != null && activePendingIntents.containsKey(pi)) {
                 true
             } else {
@@ -1471,7 +1499,7 @@ private fun LocationHooker.hookPendingIntentDelivery(classLoader: ClassLoader) {
         return@hookAllMethods try {
             chain.proceed(chain.args.toTypedArray())
         } catch (error: android.app.PendingIntent.CanceledException) {
-            if (pendingIntent != null) activePendingIntents.remove(pendingIntent)
+            if (pendingIntent != null) removePendingIntent(pendingIntent)
             throw error
         }
     }
