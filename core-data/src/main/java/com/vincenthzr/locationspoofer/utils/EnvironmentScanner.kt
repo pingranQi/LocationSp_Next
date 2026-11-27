@@ -2,6 +2,9 @@ package com.vincenthzr.locationspoofer.utils
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.telephony.CellInfo
 import android.telephony.CellInfoCdma
@@ -22,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.launch
 import kotlin.coroutines.resume
+import java.util.concurrent.atomic.AtomicBoolean
 
 @android.annotation.SuppressLint("MissingPermission", "NewApi")
 class EnvironmentScanner(private val context: Context) {
@@ -59,11 +63,7 @@ class EnvironmentScanner(private val context: Context) {
 
             val connectionInfo = wifiManager.connectionInfo
             val connectedBssid = if (isWifiConnected) connectionInfo?.bssid else null
-            try {
-                wifiManager.startScan()
-            } catch (e: Throwable) {
-            }
-            val results = wifiManager.scanResults ?: emptyList()
+            val results = awaitFreshWifiScanResults(wifiManager)
 
             // 1. 优先提取当前正在连接的 Wi-Fi 信息
             if (isWifiConnected && connectedBssid != null && connectedBssid != "02:00:00:00:00:00") {
@@ -143,6 +143,63 @@ class EnvironmentScanner(private val context: Context) {
             resultObj.put("nearbyWifi", JSONArray())
         }
         resultObj.toString()
+    }
+
+
+    /**
+     * Wait for the system scan-complete broadcast before reading results.
+     * If Android throttles/rejects the scan or the request times out, return an empty list
+     * rather than silently associating stale cached APs with the current location.
+     */
+    private suspend fun awaitFreshWifiScanResults(wifiManager: WifiManager): List<ScanResult> {
+        return kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+            suspendCancellableCoroutine { continuation ->
+                val appContext = context.applicationContext
+                val registered = AtomicBoolean(false)
+                lateinit var receiver: BroadcastReceiver
+
+                fun unregisterReceiver() {
+                    if (registered.compareAndSet(true, false)) {
+                        runCatching { appContext.unregisterReceiver(receiver) }
+                    }
+                }
+
+                receiver = object : BroadcastReceiver() {
+                    override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                        val fresh = intent?.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false) == true
+                        unregisterReceiver()
+                        val results = if (fresh) {
+                            runCatching { wifiManager.scanResults ?: emptyList() }.getOrDefault(emptyList())
+                        } else {
+                            emptyList()
+                        }
+                        if (continuation.isActive) continuation.resume(results)
+                    }
+                }
+
+                registered.set(true)
+                try {
+                    val filter = IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
+                    if (android.os.Build.VERSION.SDK_INT >= 33) {
+                        appContext.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        appContext.registerReceiver(receiver, filter)
+                    }
+                } catch (_: Exception) {
+                    registered.set(false)
+                    if (continuation.isActive) continuation.resume(emptyList())
+                    return@suspendCancellableCoroutine
+                }
+
+                continuation.invokeOnCancellation { unregisterReceiver() }
+                val started = runCatching { wifiManager.startScan() }.getOrDefault(false)
+                if (!started) {
+                    unregisterReceiver()
+                    if (continuation.isActive) continuation.resume(emptyList())
+                }
+            }
+        } ?: emptyList()
     }
 
     @SuppressLint("MissingPermission")

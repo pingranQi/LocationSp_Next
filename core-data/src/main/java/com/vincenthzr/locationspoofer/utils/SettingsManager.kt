@@ -12,6 +12,7 @@ import org.json.JSONObject
 class SettingsManager(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+    private val secretStore = EncryptedSecretStore(context.applicationContext)
 
     init {
         // 自动升级迁移：
@@ -44,16 +45,16 @@ class SettingsManager(context: Context) {
         set(value) = prefs.edit().putBoolean("is_language_set", value).apply()
 
     var amapApiKey: String
-        get() = prefs.getString("amap_api_key", "") ?: ""
-        set(value) = prefs.edit().putString("amap_api_key", value).apply()
+        get() = secretStore.get("amap_api_key")
+        set(value) = secretStore.set("amap_api_key", value)
 
     var baiduApiKey: String
-        get() = prefs.getString("baidu_api_key", "") ?: ""
-        set(value) = prefs.edit().putString("baidu_api_key", value).apply()
+        get() = secretStore.get("baidu_api_key")
+        set(value) = secretStore.set("baidu_api_key", value)
 
     var googleApiKey: String
-        get() = prefs.getString("google_api_key", "") ?: ""
-        set(value) = prefs.edit().putString("google_api_key", value).apply()
+        get() = secretStore.get("google_api_key")
+        set(value) = secretStore.set("google_api_key", value)
 
     /** 自定义底图瓦片地址。留空 = 使用内置 OpenFreeMap 矢量样式。 */
     var customTileUrl: String
@@ -66,12 +67,12 @@ class SettingsManager(context: Context) {
         set(value) = prefs.edit().putString("custom_search_url", value).apply()
 
     var wigleApiToken: String
-        get() = prefs.getString("wigle_api_token", "") ?: ""
-        set(value) = prefs.edit().putString("wigle_api_token", value).apply()
+        get() = secretStore.get("wigle_api_token")
+        set(value) = secretStore.set("wigle_api_token", value)
 
     var opencellidApiToken: String
-        get() = prefs.getString("opencellid_api_token", "") ?: ""
-        set(value) = prefs.edit().putString("opencellid_api_token", value).apply()
+        get() = secretStore.get("opencellid_api_token")
+        set(value) = secretStore.set("opencellid_api_token", value)
 
     var mapType: String
         get() = prefs.getString("map_type", "NORMAL") ?: "NORMAL"

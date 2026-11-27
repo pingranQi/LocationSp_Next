@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <permission
+        android:name="com.vincenthzr.locationspoofer.permission.CONTROL_SPOOFING"
+        android:protectionLevel="signature" />
+
     <application>
         <service
             android:name=".SpoofingService"
@@ -14,7 +18,8 @@
             android:exported="false" />
         <receiver
             android:name=".SpoofingControlReceiver"
-            android:exported="true">
+            android:exported="true"
+            android:permission="com.vincenthzr.locationspoofer.permission.CONTROL_SPOOFING">
             <intent-filter>
                 <action android:name="com.vincenthzr.locationspoofer.START" />
                 <action android:name="com.vincenthzr.locationspoofer.STOP" />

@@ -7,6 +7,7 @@ import com.amap.api.services.core.ServiceSettings
 import com.google.android.libraries.places.api.Places
 import com.vincenthzr.locationspoofer.di.appModules
 import com.vincenthzr.locationspoofer.utils.XposedModuleStatus
+import com.vincenthzr.locationspoofer.utils.SettingsManager
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -18,7 +19,8 @@ class LocationApp : Application(), XposedServiceHelper.OnServiceListener {
     override fun onCreate() {
         super.onCreate()
 
-        val prefs = getSharedPreferences("app_settings", MODE_PRIVATE)
+        // Migrate legacy API keys before initializing map SDKs.
+        val settings = SettingsManager(this)
         MapsInitializer.updatePrivacyShow(this, true, true)
         MapsInitializer.updatePrivacyAgree(this, true)
         ServiceSettings.updatePrivacyShow(this, true, true)
@@ -26,14 +28,14 @@ class LocationApp : Application(), XposedServiceHelper.OnServiceListener {
         AMapLocationClient.updatePrivacyShow(this, true, true)
         AMapLocationClient.updatePrivacyAgree(this, true)
 
-        val customApiKey = prefs.getString("amap_api_key", "")
+        val customApiKey = settings.amapApiKey
         if (!customApiKey.isNullOrEmpty()) {
             MapsInitializer.setApiKey(customApiKey)
             AMapLocationClient.setApiKey(customApiKey)
             ServiceSettings.getInstance().setApiKey(customApiKey)
         }
 
-        val baiduApiKey = prefs.getString("baidu_api_key", "")
+        val baiduApiKey = settings.baiduApiKey
         if (!baiduApiKey.isNullOrEmpty()) {
             com.baidu.mapapi.SDKInitializer.setApiKey(baiduApiKey)
         }
@@ -46,7 +48,7 @@ class LocationApp : Application(), XposedServiceHelper.OnServiceListener {
             e.printStackTrace()
         }
 
-        val googleApiKey = prefs.getString("google_api_key", "")
+        val googleApiKey = settings.googleApiKey
         if (!Places.isInitialized() && !googleApiKey.isNullOrBlank()) {
             try {
                 Places.initialize(this, googleApiKey)
