@@ -28,9 +28,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      # Keep workflow_dispatch input out of inline shell source.
-      GOOGLE_MAPS_API_KEY: ${{ inputs.google_maps_api_key }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
