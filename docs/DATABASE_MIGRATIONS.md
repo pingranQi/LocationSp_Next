@@ -15,7 +15,7 @@
 
 仓库可追溯的 schema 变更记录没有提供 4 → 5、5 → 6 的 SQL 与 Room schema 快照，因此不能安全猜测列、索引或外键结构。当前策略是不使用 destructive fallback：Room 遇到缺失迁移路径会明确失败，而不是静默删除用户地点、无线环境和轨迹数据。
 
-版本 3 或 6–10 升级到 11 有已登记迁移链；版本 4/5 的无损升级仍待取得对应旧版 schema 后补齐。升级前应使用 App 内数据导出功能备份。不要把 fallbackToDestructiveMigration() 加回去作为兼容修复。
+版本 6–10 升级到 11 有已登记迁移链。版本 3 只能迁移到 4，因缺少 4 → 5、5 → 6 的真实 schema 与 SQL，不能保证从 3 继续升级到 11；版本 4/5 的无损升级仍待取得对应旧版 schema 后补齐。升级前应使用 App 内数据导出功能备份。不要把 fallbackToDestructiveMigration() 加回去作为兼容修复。
 
 ## 后续迁移约束
 
