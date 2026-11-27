@@ -145,36 +145,8 @@ internal fun LocationHooker.hookBluetoothLE(
 
         // Do not fabricate adapter power/state or chipset capabilities; retain native hardware state.
 
-        // 6. Hook BluetoothAdapter.getBluetoothLeScanner
-        try {
-            XposedHelpers.hookAllMethods(bluetoothAdapterClass, "getBluetoothLeScanner") { chain, _ ->
-                val result = chain.proceed(chain.args.toTypedArray())
-                val config = readConfig()
-                if (result == null && config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                    val adapter = chain.thisObject
-                    try {
-                        var scanner = XposedHelpers.getObjectField(adapter, "mBluetoothLeScanner")
-                        if (scanner == null && leScannerClass != null) {
-                            for (c in leScannerClass.declaredConstructors) {
-                                try {
-                                    c.isAccessible = true
-                                    val dummyArgs = arrayOfNulls<Any>(c.parameterCount)
-                                    scanner = c.newInstance(*dummyArgs)
-                                    if (scanner != null) break
-                                } catch (_: Throwable) {}
-                            }
-                            if (scanner != null) {
-                                try {
-                                    XposedHelpers.setObjectField(adapter, "mBluetoothLeScanner", scanner)
-                                } catch (_: Throwable) {}
-                            }
-                        }
-                        if (scanner != null) return@hookAllMethods scanner
-                    } catch (_: Throwable) {}
-                }
-                return@hookAllMethods result
-            }
-        } catch (_: Throwable) {}
+        // Do not manufacture a scanner when Bluetooth is disabled or the framework denied access.
+        // Keep the platform's real null/non-null result.
 
         // 7. Hook BluetoothAdapter.getBondedDevices
         try {
@@ -495,45 +467,47 @@ internal fun LocationHooker.hookBluetoothLE(
 
         try {
             XposedHelpers.hookAllMethods(bluetoothManagerClass, "getConnectedDevices") { chain, _ ->
+                val native = chain.proceed(chain.args.toTypedArray()) as? List<*>
                 val config = readConfig()
-                if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                    val bluetoothArray = config.optJSONArray("bluetooth_json")
-                    if (bluetoothArray != null && bluetoothArray.length() > 0) {
-                        val list = java.util.ArrayList<Any>()
-                        for (i in 0 until bluetoothArray.length()) {
-                            val obj = bluetoothArray.getJSONObject(i)
-                            if (obj.optBoolean("isConnected", false) || obj.optBoolean("isDesignated", false)) {
-                                val address = obj.optString("address", "00:00:00:00:00:00")
-                                val dev = createBluetoothDevice(classLoader, address)
-                                if (dev != null) list.add(dev)
-                            }
+                if (config == null || !config.optBoolean("active", false) || !config.optBoolean("mock_bluetooth", true)) {
+                    return@hookAllMethods native ?: emptyList<Any>()
+                }
+                val list = java.util.ArrayList<Any>()
+                native?.filterNotNull()?.let { list.addAll(it) }
+                val bluetoothArray = config.optJSONArray("bluetooth_json")
+                if (bluetoothArray != null) {
+                    for (i in 0 until bluetoothArray.length()) {
+                        val obj = bluetoothArray.getJSONObject(i)
+                        if (obj.optBoolean("isConnected", false) || obj.optBoolean("isDesignated", false)) {
+                            val dev = createBluetoothDevice(classLoader, obj.optString("address", "00:00:00:00:00:00"))
+                            if (dev != null) list.add(dev)
                         }
-                        if (list.isNotEmpty()) return@hookAllMethods list
                     }
                 }
-                return@hookAllMethods chain.proceed(chain.args.toTypedArray())
+                return@hookAllMethods list
             }
         } catch (_: Throwable) {}
 
         try {
             XposedHelpers.hookAllMethods(bluetoothManagerClass, "getDevicesMatchingConnectionStates") { chain, _ ->
+                val native = chain.proceed(chain.args.toTypedArray()) as? List<*>
                 val config = readConfig()
-                if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                    val bluetoothArray = config.optJSONArray("bluetooth_json")
-                    if (bluetoothArray != null && bluetoothArray.length() > 0) {
-                        val list = java.util.ArrayList<Any>()
-                        for (i in 0 until bluetoothArray.length()) {
-                            val obj = bluetoothArray.getJSONObject(i)
-                            if (obj.optBoolean("isConnected", false) || obj.optBoolean("isDesignated", false)) {
-                                val address = obj.optString("address", "00:00:00:00:00:00")
-                                val dev = createBluetoothDevice(classLoader, address)
-                                if (dev != null) list.add(dev)
-                            }
+                if (config == null || !config.optBoolean("active", false) || !config.optBoolean("mock_bluetooth", true)) {
+                    return@hookAllMethods native ?: emptyList<Any>()
+                }
+                val list = java.util.ArrayList<Any>()
+                native?.filterNotNull()?.let { list.addAll(it) }
+                val bluetoothArray = config.optJSONArray("bluetooth_json")
+                if (bluetoothArray != null) {
+                    for (i in 0 until bluetoothArray.length()) {
+                        val obj = bluetoothArray.getJSONObject(i)
+                        if (obj.optBoolean("isConnected", false) || obj.optBoolean("isDesignated", false)) {
+                            val dev = createBluetoothDevice(classLoader, obj.optString("address", "00:00:00:00:00:00"))
+                            if (dev != null) list.add(dev)
                         }
-                        if (list.isNotEmpty()) return@hookAllMethods list
                     }
                 }
-                return@hookAllMethods chain.proceed(chain.args.toTypedArray())
+                return@hookAllMethods list
             }
         } catch (_: Throwable) {}
     }
