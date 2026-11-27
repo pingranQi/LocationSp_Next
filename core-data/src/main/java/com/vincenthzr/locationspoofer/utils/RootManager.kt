@@ -14,7 +14,12 @@ class RootManager {
     suspend fun checkRootAccess(solution: RootSolution = RootSolution.AUTO): Boolean =
         withContext(Dispatchers.IO) {
             val hasRoot = executeCommand("id").contains("uid=0(root)")
-            if (hasRoot) applyRootBackgroundExemptions()
+            if (hasRoot) {
+                if (executeCommand("chmod 771 /data/local/tmp") == "ERROR") {
+                    android.util.Log.w(TAG, "Failed to set /data/local/tmp permissions to 771")
+                }
+                applyRootBackgroundExemptions()
+            }
             hasRoot
         }
 
