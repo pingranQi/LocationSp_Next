@@ -55,14 +55,24 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
                         throw Exception("Failed to fetch updates: ${response.code}")
                     }
                     val body = response.body ?: return@use "[]"
-                    require(body.contentLength() <= MAX_RELEASE_RESPONSE_BYTES) {
+                    require(body.contentLength() <= MAX_RELEASE_RESPONSE_BYTES || body.contentLength() == -1L) {
                         "Release metadata exceeds the configured size limit"
                     }
-                    body.string().also {
-                        require(it.toByteArray(Charsets.UTF_8).size <= MAX_RELEASE_RESPONSE_BYTES) {
-                            "Release metadata exceeds the configured size limit"
+                    val output = java.io.ByteArrayOutputStream()
+                    body.byteStream().use { input ->
+                        val buffer = ByteArray(8192)
+                        var total = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= MAX_RELEASE_RESPONSE_BYTES) {
+                                "Release metadata exceeds the configured size limit"
+                            }
+                            output.write(buffer, 0, count)
                         }
                     }
+                    String(output.toByteArray(), Charsets.UTF_8)
                 }
                 val jsonArray = JSONArray(jsonStr)
                 val releaseList = mutableListOf<GithubRelease>()
