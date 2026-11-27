@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export ANDROID_HOME="$HOME/Android/Sdk"
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SDKMANAGER" ]; then
             for candidate in "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager; do
