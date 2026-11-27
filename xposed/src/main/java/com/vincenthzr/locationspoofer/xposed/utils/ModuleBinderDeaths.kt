@@ -13,7 +13,10 @@ internal object ModuleBinderDeaths {
 
     @Synchronized
     fun watch(binder: IBinder, registrationKey: String = "default", onDeath: () -> Unit) {
-        if (closed || !binder.isBinderAlive) return
+        if (closed || !binder.isBinderAlive) {
+            runCatching { onDeath() }
+            return
+        }
         entries[binder]?.let { it.callbacks[registrationKey] = onDeath; return }
         lateinit var recipient: IBinder.DeathRecipient
         recipient = IBinder.DeathRecipient {
@@ -27,10 +30,10 @@ internal object ModuleBinderDeaths {
         try {
             binder.linkToDeath(recipient, 0)
         } catch (error: Throwable) {
-            entries.remove(binder)
+            val failed = entries.remove(binder)
             // The remote process may have died between isBinderAlive and linkToDeath.
-            // Remove the caller's registration immediately instead of retaining a stale listener.
-            runCatching { onDeath() }
+            // Clear every registration attached to this Binder, not only the latest one.
+            failed?.callbacks?.values?.forEach { runCatching { it() } }
             throw error
         }
     }
