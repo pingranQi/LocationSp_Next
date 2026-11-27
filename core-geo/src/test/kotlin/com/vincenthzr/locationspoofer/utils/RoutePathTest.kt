@@ -39,6 +39,30 @@ class RoutePathTest {
     }
 
     @Test
+    fun `interpolates across the antimeridian using the short direction`() {
+        val west = LatLng(0.0, 179.9)
+        val east = LatLng(0.0, -179.9)
+        val path = RoutePath(listOf(west, east))
+
+        val midpoint = path.positionAt(path.totalDistance / 2.0, stopAtDestination = false)
+
+        assertEquals(0.0, midpoint.lat, 1e-9)
+        assertTrue(kotlin.math.abs(midpoint.lng) > 179.99)
+        assertTrue(kotlin.math.abs(midpoint.lng) <= 180.0)
+        assertEquals(GeoMath.distance(west, east) / 2.0,
+            GeoMath.distance(west, LatLng(midpoint.lat, midpoint.lng)), 0.5)
+    }
+
+    @Test
+    fun `destination normalizes longitude after crossing antimeridian`() {
+        val start = LatLng(0.0, 179.9)
+        val destination = GeoMath.destination(start, 90.0, 30_000.0)
+
+        assertTrue(destination.lng in -180.0..180.0)
+        assertTrue(destination.lng < 0.0)
+    }
+
+    @Test
     fun `stops at the destination when requested`() {
         val path = RoutePath(listOf(a, b))
         val end = path.positionAt(5000.0, stopAtDestination = true)

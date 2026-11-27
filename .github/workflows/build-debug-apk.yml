@@ -21,9 +21,6 @@ on:
 
 permissions:
   contents: write
-  checks: write
-  pull-requests: write
-  issues: write
 
 # 产物命名：LocationSp_Next-{scheme}-{abi}.apk
 # 因为开了 ABI 拆分 + scoped/global 两个变体，一次构建最多产出 4 个 APK，后缀不能省。
@@ -31,6 +28,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Keep workflow_dispatch input out of inline shell source.
+      GOOGLE_MAPS_API_KEY: ${{ inputs.google_maps_api_key }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -140,11 +140,6 @@ jobs:
           else
             echo "compileSdk 主版本 >= 37，保持仓库原值 compileSdk = 37"
           fi
-
-      - name: Provide Google Maps key
-        if: ${{ inputs.google_maps_api_key != '' }}
-        run: |
-          echo "GOOGLE_MAPS_API_KEY: ${{ inputs.google_maps_api_key }}" > local.yml
 
       # 单元测试：core-geo 是纯 Kotlin/JVM 模块，不需要 Android SDK，秒级跑完。
       # 失败则直接阻断构建，不生成 APK——配速曲线算错时不该产出 APK。

@@ -88,7 +88,8 @@ abstract class AppDatabase : RoomDatabase() {
                     "environment_database"
                 )
                     .addMigrations(MIGRATION_3_4, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
-                    .fallbackToDestructiveMigration()
+                    // Do not silently drop user-collected locations/routes when a migration path is missing.
+                    // Add an explicit, data-preserving migration before supporting any additional schema version.
                     .build()
                 INSTANCE = instance
                 instance

@@ -15,7 +15,9 @@ object GeoMath {
         val dLat = Math.toRadians(b.lat - a.lat)
         val dLng = Math.toRadians(b.lng - a.lng)
         val h = sin(dLat / 2).pow(2) + cos(Math.toRadians(a.lat)) * cos(Math.toRadians(b.lat)) * sin(dLng / 2).pow(2)
-        return 2 * EARTH_RADIUS_M * atan2(sqrt(h), sqrt(1 - h))
+        // Floating-point rounding near antipodal points can push h slightly outside [0, 1].
+        val boundedH = h.coerceIn(0.0, 1.0)
+        return 2 * EARTH_RADIUS_M * atan2(sqrt(boundedH), sqrt(1 - boundedH))
     }
 
     /** 从 from 指向 to 的方位角（度，正北为 0，顺时针） */
@@ -28,6 +30,10 @@ object GeoMath {
         return ((Math.toDegrees(atan2(y, x)) + 360.0) % 360.0).toFloat()
     }
 
+    /** Normalize longitude to [-180, 180), including antimeridian crossings. */
+    private fun normalizeLongitude(longitude: Double): Double =
+        ((longitude + 540.0) % 360.0) - 180.0
+
     /** 从 start 沿 bearing 方向前进 meters 米后的位置 */
     fun destination(start: LatLng, bearingDeg: Double, meters: Double): LatLng {
         val angular = meters / EARTH_RADIUS_M
@@ -36,7 +42,7 @@ object GeoMath {
         val lng1 = Math.toRadians(start.lng)
         val lat2 = asin(sin(lat1) * cos(angular) + cos(lat1) * sin(angular) * cos(bearingRad))
         val lng2 = lng1 + atan2(sin(bearingRad) * sin(angular) * cos(lat1), cos(angular) - sin(lat1) * sin(lat2))
-        return LatLng(Math.toDegrees(lat2), Math.toDegrees(lng2))
+        return LatLng(Math.toDegrees(lat2), normalizeLongitude(Math.toDegrees(lng2)))
     }
 }
 
@@ -57,6 +63,11 @@ class RoutePath(val points: List<LatLng>) {
     val totalDistance: Double = if (points.isEmpty()) 0.0 else cumulative.last()
     val isClosedLoop: Boolean = points.size >= 2 && GeoMath.distance(points.first(), points.last()) <= 5.0
     val isValid: Boolean get() = points.size >= 2 && totalDistance > 0.0
+
+    private fun interpolateLongitude(from: Double, to: Double, ratio: Double): Double {
+        val delta = ((to - from + 540.0) % 360.0) - 180.0
+        return ((from + delta * ratio + 540.0) % 360.0) - 180.0
+    }
 
     fun positionAt(distanceTraveled: Double, stopAtDestination: Boolean): Position {
         require(isValid) { "route needs at least two distinct points" }
@@ -88,7 +99,7 @@ class RoutePath(val points: List<LatLng>) {
         val bearing = if (forward) GeoMath.bearing(from, to) else GeoMath.bearing(to, from)
         return Position(
             from.lat + (to.lat - from.lat) * ratio,
-            from.lng + (to.lng - from.lng) * ratio,
+            interpolateLongitude(from.lng, to.lng, ratio),
             bearing,
             arrived = false
         )
