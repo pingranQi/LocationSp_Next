@@ -250,26 +250,40 @@ private fun LocationHooker.ensureCallbackHooked(callback: Any, vararg deliveryMe
     for (methodName in deliveryMethodNames) {
         try {
             XposedHelpers.hookAllMethods(clazz, methodName) { innerChain, _ ->
-                val binder = (innerChain.thisObject as? IInterface)?.asBinder() ?: (innerChain.thisObject as? IBinder)
-                val config = readConfig()
-                val isGlobal = config?.optBoolean("system_hook_global_mode", false) == true
-                val isTracked = (binder != null && (activeListenerBinders.containsKey(binder) || activeCallbackBinders.containsKey(binder))) ||
-                        spoofedListenerInstances.contains(innerChain.thisObject)
-                val isTarget = isTracked || isGlobal
-                if (isTarget && config != null && config.optBoolean("active", false)) {
-                    val motion = getCurrentSpoofedMotion("WGS-84")
-                    if (motion != null) {
-                        rewriteLocationArgs(
-                            innerChain.args,
-                            motion,
-                            RouteEngine.realisticAltitude(config),
-                            getJitteredAccuracy()
-                        )
-                        logLoc("[SysLoc] Rewrote location in callback $methodName for target binder (lat=${motion.lat}, lng=${motion.lng}, isGlobal=$isGlobal)"
-                        )
+                val callbackInstance = innerChain.thisObject
+                val binder = (callbackInstance as? IInterface)?.asBinder() ?: (callbackInstance as? IBinder)
+                // ILocationCallback.onLocation is one-shot; release strong references after delivery.
+                val oneShot = methodName == "onLocation" &&
+                    (binder != null && activeCallbackBinders.containsKey(binder) ||
+                        spoofedListenerInstances.contains(callbackInstance))
+                try {
+                    val config = readConfig()
+                    val isGlobal = config?.optBoolean("system_hook_global_mode", false) == true
+                    val isTracked = (binder != null && (activeListenerBinders.containsKey(binder) || activeCallbackBinders.containsKey(binder))) ||
+                            spoofedListenerInstances.contains(callbackInstance)
+                    val isTarget = isTracked || isGlobal
+                    if (isTarget && config != null && config.optBoolean("active", false)) {
+                        val motion = getCurrentSpoofedMotion("WGS-84")
+                        if (motion != null) {
+                            rewriteLocationArgs(
+                                innerChain.args,
+                                motion,
+                                RouteEngine.realisticAltitude(config),
+                                getJitteredAccuracy()
+                            )
+                            logLoc("[SysLoc] Rewrote location in callback $methodName for target binder (lat=${motion.lat}, lng=${motion.lng}, isGlobal=$isGlobal)")
+                        }
+                    }
+                    return@hookAllMethods innerChain.proceed(innerChain.args.toTypedArray())
+                } finally {
+                    if (oneShot) {
+                        if (binder != null) {
+                            activeCallbackBinders.remove(binder)
+                            ModuleBinderDeaths.unwatch(binder, "location-callback")
+                        }
+                        spoofedListenerInstances.remove(callbackInstance)
                     }
                 }
-                return@hookAllMethods innerChain.proceed(innerChain.args.toTypedArray())
             }
         } catch (_: Throwable) {}
     }
