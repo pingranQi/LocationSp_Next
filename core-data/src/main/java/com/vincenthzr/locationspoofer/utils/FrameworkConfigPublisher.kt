@@ -18,6 +18,7 @@ internal class FrameworkConfigPublisher {
         const val SNAPSHOT_RETENTION_MS = 24L * 60L * 60L * 1000L
     }
 
+    @Synchronized
     fun publish(payload: String, store: FrameworkConfigStore): Long {
         val bytes = payload.toByteArray(Charsets.UTF_8)
         val publishedAt = System.currentTimeMillis()
@@ -59,5 +60,6 @@ internal class FrameworkConfigPublisher {
         return publishedAt
     }
 
+    @Synchronized
     fun onReconnect() { cleanupNeeded = true }
 }
