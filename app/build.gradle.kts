@@ -25,14 +25,25 @@ android {
         return null
     }
 
+    fun validatedApiKey(name: String, value: String): String {
+        require(value.length <= 256 && value.matches(Regex("[A-Za-z0-9._-]*"))) {
+            "$name contains unsupported characters or exceeds 256 characters"
+        }
+        return value
+    }
+
+    fun kotlinStringLiteral(value: String): String =
+        "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"")
+            .replace("\n", "\\n").replace("\r", "\\r") + "\""
+
     val googleMapsApiKey =
-        System.getenv("GOOGLE_MAPS_API_KEY") ?: getLocalConfig("GOOGLE_MAPS_API_KEY") ?: ""
+        validatedApiKey("GOOGLE_MAPS_API_KEY", System.getenv("GOOGLE_MAPS_API_KEY") ?: getLocalConfig("GOOGLE_MAPS_API_KEY") ?: "")
     // 高德 / 百度 Key 同样只从环境变量或 local.yml（已 gitignore）读取，仓库内不保存任何真实 Key。
     // 留空时 manifest 中的 meta-data 为空字符串，App 会回退到无需 Key 的 OSM 地图引擎 / 由用户在设置页自行填写。
     val amapApiKey =
-        System.getenv("AMAP_API_KEY") ?: getLocalConfig("AMAP_API_KEY") ?: ""
+        validatedApiKey("AMAP_API_KEY", System.getenv("AMAP_API_KEY") ?: getLocalConfig("AMAP_API_KEY") ?: "")
     val baiduMapsApiKey =
-        System.getenv("BAIDU_MAP_API_KEY") ?: getLocalConfig("BAIDU_MAP_API_KEY") ?: ""
+        validatedApiKey("BAIDU_MAP_API_KEY", System.getenv("BAIDU_MAP_API_KEY") ?: getLocalConfig("BAIDU_MAP_API_KEY") ?: "")
 
     defaultConfig {
         applicationId = "com.vincenthzr.locationspoofer"
@@ -103,7 +114,7 @@ android {
         debug {
             // 没配置发布密钥时回退到 debug 签名，保证新克隆仓库的人也能直接编译调试
             signingConfig = signingConfigs.getByName(if (hasReleaseKeystore) "release" else "debug")
-            buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"$googleMapsApiKey\"")
+            buildConfigField("String", "GOOGLE_MAPS_API_KEY", kotlinStringLiteral(googleMapsApiKey))
         }
         release {
             isMinifyEnabled = true
