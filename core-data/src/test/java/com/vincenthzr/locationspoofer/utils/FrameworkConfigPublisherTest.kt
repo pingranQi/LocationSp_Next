@@ -64,7 +64,18 @@ class FrameworkConfigPublisherTest {
         assertTrue(store.files.keys.containsAll(previousFiles))
         store.accept = true
         publisher.publish("{\"active\":false}", store)
-        assertTrue(store.files.isEmpty())
+        assertTrue("Previous immutable snapshot must remain readable during receiver polling", store.files.keys.containsAll(previousFiles))
+    }
+
+    @Test fun expiredTimestampedSnapshotsAreCleanedButRecentOnesAreRetained() {
+        val store = Store()
+        val stale = "${FrameworkConfigChannel.FILE_PREFIX}1-old.json"
+        val recent = "${FrameworkConfigChannel.FILE_PREFIX}${System.currentTimeMillis()}-recent.json"
+        store.files[stale] = byteArrayOf(1)
+        store.files[recent] = byteArrayOf(2)
+        FrameworkConfigPublisher().publish("{\"active\":false}", store)
+        assertFalse(store.files.containsKey(stale))
+        assertTrue(store.files.containsKey(recent))
     }
 
     @Test fun incompleteFileIsNeverPublished() {
@@ -85,6 +96,7 @@ class FrameworkConfigPublisherTest {
         publisher.publish("x".repeat(140_000), store)
         assertEquals(2, store.files.size)
         publisher.publish("{\"active\":false}", store)
-        assertEquals(setOf("user-export.json"), store.files.keys)
+        assertTrue(store.files.containsKey("user-export.json"))
+        assertEquals(2, store.files.size)
     }
 }
