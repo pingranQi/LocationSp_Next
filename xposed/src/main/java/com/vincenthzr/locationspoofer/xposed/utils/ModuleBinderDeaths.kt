@@ -39,9 +39,13 @@ internal object ModuleBinderDeaths {
     }
 
     @Synchronized
-    fun unwatch(binder: IBinder) {
-        val entry = entries.remove(binder) ?: return
-        runCatching { binder.unlinkToDeath(entry.recipient, 0) }
+    fun unwatch(binder: IBinder, registrationKey: String = "default") {
+        val entry = entries[binder] ?: return
+        entry.callbacks.remove(registrationKey)
+        if (entry.callbacks.isEmpty()) {
+            entries.remove(binder)
+            runCatching { binder.unlinkToDeath(entry.recipient, 0) }
+        }
     }
 
     @Synchronized

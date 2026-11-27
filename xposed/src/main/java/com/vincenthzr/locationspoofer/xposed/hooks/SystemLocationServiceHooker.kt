@@ -757,7 +757,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                         val binder = (listener as? IInterface)?.asBinder() ?: (listener as? IBinder)
                         if (binder != null) {
                             activeListenerBinders.remove(binder)
-                            ModuleBinderDeaths.unwatch(binder)
+                            ModuleBinderDeaths.unwatch(binder, "location-listener")
                         }
                         spoofedListenerInstances.remove(listener)
                     }
@@ -952,7 +952,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                     val binder = (callback as? IInterface)?.asBinder() ?: (callback as? IBinder)
                     if (binder != null) {
                         activeGnssStatusBinders.remove(binder)
-                        ModuleBinderDeaths.unwatch(binder)
+                        ModuleBinderDeaths.unwatch(binder, "gnss-status")
                     }
                 }
                 return@hookAllMethods chain.proceed(chain.args.toTypedArray())
@@ -1019,7 +1019,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                     val binder = (callback as? IInterface)?.asBinder() ?: (callback as? IBinder)
                     if (binder != null) {
                         activeGnssNmeaBinders.remove(binder)
-                        ModuleBinderDeaths.unwatch(binder)
+                        ModuleBinderDeaths.unwatch(binder, "gnss-nmea")
                     }
                 }
                 return@hookAllMethods chain.proceed(chain.args.toTypedArray())
@@ -1256,7 +1256,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                 val binder = (arg as? IInterface)?.asBinder() ?: (arg as? IBinder)
                                 if (binder != null) {
                                     activeListenerBinders.remove(binder)
-                                    ModuleBinderDeaths.unwatch(binder)
+                                    ModuleBinderDeaths.unwatch(binder, "location-listener")
                                 }
                                 spoofedListenerInstances.remove(arg)
                             }
