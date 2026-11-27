@@ -25,6 +25,9 @@ internal object ModuleBinderDeaths {
             binder.linkToDeath(recipient, 0)
         } catch (error: Throwable) {
             entries.remove(binder)
+            // The remote process may have died between isBinderAlive and linkToDeath.
+            // Remove the caller's registration immediately instead of retaining a stale listener.
+            runCatching { onDeath() }
             throw error
         }
     }
