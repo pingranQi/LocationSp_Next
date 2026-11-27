@@ -392,8 +392,12 @@ class SettingsManager(context: Context) {
 
     /** 是否开启全局模拟模式（除本应用与系统基础核心外对所有应用生效） */
     var isSystemHookGlobalMode: Boolean
-        get() = prefs.getBoolean("is_system_hook_global_mode", true)
-        set(value) = prefs.edit().putBoolean("is_system_hook_global_mode", value).apply()
+        get() = prefs.getBoolean("global_mode_user_confirmed", false) &&
+            prefs.getBoolean("is_system_hook_global_mode", false)
+        set(value) = prefs.edit()
+            .putBoolean("is_system_hook_global_mode", value)
+            .putBoolean("global_mode_user_confirmed", true)
+            .apply()
     var forceLocationEnabled: Boolean
         get() = prefs.getBoolean("force_location_enabled", false)
         set(value) = prefs.edit().putBoolean("force_location_enabled", value).apply()
