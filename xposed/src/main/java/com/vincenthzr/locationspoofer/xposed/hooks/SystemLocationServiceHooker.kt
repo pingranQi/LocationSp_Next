@@ -708,6 +708,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                         val binder = (listener as? IInterface)?.asBinder() ?: (listener as? IBinder)
                         if (binder != null) {
                             activeListenerBinders.remove(binder)
+                            ModuleBinderDeaths.unwatch(binder)
                         }
                         spoofedListenerInstances.remove(listener)
                     }
@@ -902,6 +903,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                     val binder = (callback as? IInterface)?.asBinder() ?: (callback as? IBinder)
                     if (binder != null) {
                         activeGnssStatusBinders.remove(binder)
+                        ModuleBinderDeaths.unwatch(binder)
                     }
                 }
                 return@hookAllMethods chain.proceed(chain.args.toTypedArray())
@@ -968,6 +970,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                     val binder = (callback as? IInterface)?.asBinder() ?: (callback as? IBinder)
                     if (binder != null) {
                         activeGnssNmeaBinders.remove(binder)
+                        ModuleBinderDeaths.unwatch(binder)
                     }
                 }
                 return@hookAllMethods chain.proceed(chain.args.toTypedArray())
@@ -1204,6 +1207,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                 val binder = (arg as? IInterface)?.asBinder() ?: (arg as? IBinder)
                                 if (binder != null) {
                                     activeListenerBinders.remove(binder)
+                                    ModuleBinderDeaths.unwatch(binder)
                                 }
                                 spoofedListenerInstances.remove(arg)
                             }
@@ -1463,7 +1467,13 @@ private fun LocationHooker.hookPendingIntentDelivery(classLoader: ClassLoader) {
                 }
             }
         }
-        return@hookAllMethods chain.proceed(chain.args.toTypedArray())
+        val pendingIntent = chain.thisObject as? android.app.PendingIntent
+        return@hookAllMethods try {
+            chain.proceed(chain.args.toTypedArray())
+        } catch (error: android.app.PendingIntent.CanceledException) {
+            if (pendingIntent != null) activePendingIntents.remove(pendingIntent)
+            throw error
+        }
     }
     logLoc("[SysLoc] PendingIntent.send hooked for location intent rewrite")
 }
