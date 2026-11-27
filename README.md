@@ -177,7 +177,8 @@ CI：`.github/workflows/build-debug-apk.yml`（手动触发，产出可直接安
 - 采集到的位置、Wi-Fi、基站和蓝牙环境记录保存在本机数据库；应用不会把这些完整采集记录作为后台任务自动上传。本项目没有自建后端。
 - 使用地图、搜索或可选云端数据查询时，仍会向第三方服务发送完成该功能所需的信息：地图瓦片请求包含地图视区；地点搜索会发送搜索关键词；WiGLE / OpenCellID 查询会发送请求地理范围及你自行配置的 Token。请按对应服务的隐私政策评估是否启用。
 - Android Auto Backup 已关闭，避免将本地位置记录和凭据自动纳入系统备份。跨设备迁移请使用应用内导出/导入；Root 设备或操作系统被攻破时，应用无法保证本地数据绝对保密。
-- 地图与云服务 API 凭据会使用 Android Keystore 管理的 AES-GCM 密钥加密后存储；从旧版本首次读取时会迁移旧的明文设置。Keystore 加密不能防御已被攻陷的 Root 系统。
+- 用户在 App「设置」中输入并保存的地图 / 云服务 API 凭据会使用 Android Keystore 管理的 AES-GCM 密钥加密；升级后首次读取时会迁移旧的明文设置。Keystore 加密不能防御已被攻陷的 Root 系统。
+- 通过 `local.yml`、环境变量或 CI 注入的构建期地图 SDK Key 会被编入 APK 的 Manifest / BuildConfig，不能视为秘密；请按应用包名、签名证书和 API 范围限制这些 Key。
 - 只有在使用对应功能时才会发起网络请求：
   - 地图瓦片：OpenFreeMap（默认）/ Esri（卫星）/ 你自行配置的瓦片源；
   - 地点搜索：Photon（默认）/ Nominatim（兜底），固定 User-Agent、限流 1 次/秒、每日 8 次上限；结果缓存仅存于本机；
