@@ -176,11 +176,16 @@ jobs:
       - name: Build APKs
         id: build
         continue-on-error: true
+        env:
+          # Build-only scope; the key is not exposed to unrelated workflow steps.
+          GOOGLE_MAPS_API_KEY: ${{ inputs.google_maps_api_key }}
+          SCHEME_INPUT: ${{ inputs.scheme }}
         run: |
-          case "${{ inputs.scheme }}" in
+          case "$SCHEME_INPUT" in
             scoped) TASKS=":app:assembleScopedDebug" ;;
             global) TASKS=":app:assembleGlobalDebug" ;;
             both)   TASKS=":app:assembleScopedDebug :app:assembleGlobalDebug" ;;
+            *) echo "::error::Invalid build scheme"; exit 2 ;;
           esac
           echo "Building: $TASKS"
           RC=0
