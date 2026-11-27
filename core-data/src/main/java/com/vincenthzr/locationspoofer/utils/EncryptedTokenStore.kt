@@ -13,31 +13,37 @@ import javax.crypto.spec.GCMParameterSpec
 /** AES-256-GCM token-at-rest encryption backed by AndroidKeyStore. */
 internal object EncryptedTokenStore {
     private const val KEY_ALIAS = "locationspoofer.api.tokens.v1"
-    private const val PREFIX = "enc:v1:"
+    private const val LEGACY_PREFIX = "enc:v1:"
+    private const val PREFIX = "enc:v2:"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
 
     fun read(prefs: SharedPreferences, name: String): String {
         val stored = prefs.getString(name, null) ?: return ""
-        if (!stored.startsWith(PREFIX)) {
-            // One-time plaintext migration. Do not fall back to plaintext if encryption fails.
+        if (stored.startsWith(PREFIX)) {
+            return runCatching { decrypt(name, stored.removePrefix(PREFIX)) }.getOrDefault("")
+        }
+        if (stored.startsWith(LEGACY_PREFIX)) {
+            // Upgrade v1 AES-GCM payloads (without AAD) to v2, which authenticates the preference key.
             return try {
-                val encrypted = encrypt(name, stored)
-                if (prefs.edit().putString(name, encrypted).commit()) {
-                    stored
-                } else {
-                    // If migration cannot be committed, do not leave a plaintext credential at rest.
-                    prefs.edit().remove(name).commit()
-                    ""
-                }
+                val plaintext = decryptLegacy(stored.removePrefix(LEGACY_PREFIX))
+                val upgraded = encrypt(name, plaintext)
+                if (prefs.edit().putString(name, upgraded).commit()) plaintext else ""
             } catch (_: Exception) {
-                // Keystore unavailable / invalidated: fail closed and remove the legacy plaintext value.
-                prefs.edit().remove(name).commit()
+                // Keep the encrypted v1 value if Keystore access is temporarily unavailable.
                 ""
             }
         }
+        // One-time plaintext migration. Never return or retain plaintext if encryption fails.
         return try {
-            decrypt(name, stored.removePrefix(PREFIX))
+            val encrypted = encrypt(name, stored)
+            if (prefs.edit().putString(name, encrypted).commit()) {
+                stored
+            } else {
+                prefs.edit().remove(name).commit()
+                ""
+            }
         } catch (_: Exception) {
+            prefs.edit().remove(name).commit()
             ""
         }
     }
@@ -52,7 +58,8 @@ internal object EncryptedTokenStore {
         } catch (_: Exception) {
             // Preserve a previously encrypted credential on transient Keystore errors.
             // Never retain a legacy plaintext value when encryption is unavailable.
-            if (prefs.getString(name, null)?.startsWith(PREFIX) != true) {
+            val existing = prefs.getString(name, null)
+            if (existing?.startsWith(PREFIX) != true && existing?.startsWith(LEGACY_PREFIX) != true) {
                 prefs.edit().remove(name).apply()
             }
             return
@@ -94,6 +101,16 @@ internal object EncryptedTokenStore {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
         cipher.updateAAD(name.toByteArray(Charsets.UTF_8))
+        return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    }
+
+    private fun decryptLegacy(encoded: String): String {
+        val packed = Base64.decode(encoded, Base64.NO_WRAP)
+        require(packed.size > 12) { "Invalid encrypted token payload" }
+        val iv = packed.copyOfRange(0, 12)
+        val ciphertext = packed.copyOfRange(12, packed.size)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
         return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
     }
 }
