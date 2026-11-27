@@ -21,8 +21,19 @@ class OpenCellIdClient {
     private fun readBoundedBody(response: okhttp3.Response): String? {
         val body = response.body ?: return null
         if (body.contentLength() > MAX_RESPONSE_BYTES) return null
-        val text = body.string()
-        return text.takeIf { it.toByteArray(Charsets.UTF_8).size <= MAX_RESPONSE_BYTES }
+        val output = java.io.ByteArrayOutputStream()
+        body.byteStream().use { input ->
+            val buffer = ByteArray(8192)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                if (total > MAX_RESPONSE_BYTES) return null
+                output.write(buffer, 0, count)
+            }
+        }
+        return output.toString(Charsets.UTF_8.name())
     }
 
     /** 验证 token 是否有效 */
