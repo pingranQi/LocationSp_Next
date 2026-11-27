@@ -45,7 +45,7 @@ jobs:
           cache: 'gradle'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
       # GitHub runner 已自带可用的 Android SDK，这里直接用预置的 sdkmanager补齐
       # compileSdk 37 所需的 platform 与 build-tools，不再依赖
