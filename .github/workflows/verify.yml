@@ -29,10 +29,14 @@ jobs:
           set -eu
           test -x ./gradlew || chmod +x ./gradlew
           ./gradlew --version
-      - name: Run unit tests and build both schemes
+      - name: Run scoped unit tests and build
         run: |
+          # Keep scheme KSP/Room schema generation in separate Gradle invocations.
           ./gradlew --no-daemon --stacktrace \
             testScopedDebugUnitTest \
+            :app:assembleScopedDebug
+      - name: Run global unit tests and build
+        run: |
+          ./gradlew --no-daemon --stacktrace \
             testGlobalDebugUnitTest \
-            :app:assembleScopedDebug \
             :app:assembleGlobalDebug
