@@ -97,6 +97,29 @@ class TrajectoryGeometryTest {
     }
 
     @Test
+    fun `loop closure rejects invalid coordinates`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.closeLoopIfNear(
+                listOf(
+                    TrajectoryPoint(0.0, 0.0, 0.0),
+                    TrajectoryPoint(Double.NaN, 0.0, 1.0),
+                    TrajectoryPoint(0.0, 0.0, 2.0)
+                )
+            )
+        }
+    }
+
+    @Test
+    fun `arrow geometry rejects invalid center and heading`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.arrowPoints(Double.NaN, 120.0, 0.0)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.arrowPoints(30.0, 120.0, Double.NaN)
+        }
+    }
+
+    @Test
     fun `arrow geometry rejects invalid dimensions`() {
         assertThrows(IllegalArgumentException::class.java) {
             TrajectoryGeometry.arrowPoints(30.0, 120.0, 0.0, lengthM = Double.NaN)

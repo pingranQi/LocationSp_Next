@@ -174,6 +174,28 @@ class TrajectoryTrackTest {
     }
 
     @Test
+    fun `rejects movement between identical timestamps`() {
+        val moved = GeoMath.destination(start, 0.0, 5.0)
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryTrack(
+                listOf(
+                    TrajectoryPoint(start.lat, start.lng, 0.0),
+                    TrajectoryPoint(moved.lat, moved.lng, 0.0)
+                )
+            )
+        }
+        val filtered = TrajectoryTrack.filter(
+            listOf(
+                TrajectoryPoint(start.lat, start.lng, 0.0),
+                TrajectoryPoint(moved.lat, moved.lng, 0.0),
+                TrajectoryPoint(moved.lat, moved.lng, 1.0)
+            )
+        )
+        assertTrue(filtered.all { it.tOffsetSec >= 0.0 })
+        assertTrue(filtered.none { it.tOffsetSec == 0.0 && GeoMath.distance(start, LatLng(it.lat, it.lng)) > 0.01 })
+    }
+
+    @Test
     fun `identical timestamps do not crash`() {
         val pts = listOf(
             TrajectoryPoint(start.lat, start.lng, 0.0),

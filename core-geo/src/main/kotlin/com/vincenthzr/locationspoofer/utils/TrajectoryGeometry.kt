@@ -25,6 +25,10 @@ object TrajectoryGeometry {
         thresholdM: Double = DEFAULT_CLOSE_THRESHOLD_M
     ): List<TrajectoryPoint> {
         require(thresholdM.isFinite() && thresholdM >= 0.0) { "loop threshold must be finite and non-negative" }
+        require(points.all { point ->
+            point.lat.isFinite() && point.lng.isFinite() && point.tOffsetSec.isFinite() &&
+                point.lat in -90.0..90.0 && point.lng in -180.0..180.0 && point.tOffsetSec >= 0.0
+        }) { "loop points must contain finite, in-range coordinates and timestamps" }
         if (points.size < 3) return points
         val first = points.first()
         val last = points.last()
@@ -106,6 +110,9 @@ object TrajectoryGeometry {
         lengthM: Double = DEFAULT_ARROW_LENGTH_M,
         spreadDeg: Double = DEFAULT_ARROW_SPREAD_DEG
     ): Pair<List<Pair<Double, Double>>, List<Pair<Double, Double>>> {
+        require(centerLat.isFinite() && centerLat in -90.0..90.0) { "arrow latitude must be finite and in range" }
+        require(centerLng.isFinite() && centerLng in -180.0..180.0) { "arrow longitude must be finite and in range" }
+        require(headingDeg.isFinite()) { "arrow heading must be finite" }
         require(lengthM.isFinite() && lengthM >= 0.0) { "arrow length must be finite and non-negative" }
         require(spreadDeg.isFinite() && spreadDeg in 0.0..180.0) { "arrow spread must be between 0 and 180 degrees" }
         val half = spreadDeg / 2.0

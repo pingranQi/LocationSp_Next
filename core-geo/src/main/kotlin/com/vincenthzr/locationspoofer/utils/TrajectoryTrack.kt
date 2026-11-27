@@ -33,8 +33,13 @@ class TrajectoryTrack(points: List<TrajectoryPoint>) {
             point.lat.isFinite() && point.lng.isFinite() && point.tOffsetSec.isFinite() &&
                 point.lat in -90.0..90.0 && point.lng in -180.0..180.0 && point.tOffsetSec >= 0.0
         }) { "trajectory points must contain finite, in-range coordinates and non-negative timestamps" }
-        require(points.zipWithNext().all { (a, b) -> b.tOffsetSec >= a.tOffsetSec }) {
-            "trajectory timestamps must be non-decreasing"
+        require(points.zipWithNext().all { (a, b) ->
+            b.tOffsetSec > a.tOffsetSec || GeoMath.distance(
+                CoordinateUtils.LatLng(a.lat, a.lng),
+                CoordinateUtils.LatLng(b.lat, b.lng)
+            ) <= 0.01
+        }) {
+            "points with identical timestamps must have effectively identical coordinates"
         }
     }
 
@@ -239,6 +244,8 @@ class TrajectoryTrack(points: List<TrajectoryPoint>) {
                         CoordinateUtils.LatLng(p.lat, p.lng)
                     )
                     val dt = p.tOffsetSec - prev.tOffsetSec
+                    // A non-zero movement at the same timestamp is an impossible instantaneous jump.
+                    if (dt <= 0.0 && d > 0.01) continue
                     // 速度异常（跳点）直接丢弃
                     if (dt > 0.0 && d / dt > maxSpeedMps) continue
                     // 距离太近：只有转向明显时才值得保留（转角处需要保留一个点）
