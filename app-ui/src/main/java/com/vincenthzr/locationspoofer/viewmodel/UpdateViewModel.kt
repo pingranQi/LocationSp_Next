@@ -31,6 +31,10 @@ data class UpdateUiState(
 )
 
 class UpdateViewModel(private val context: Context) : ViewModel() {
+    private companion object {
+        const val MAX_RELEASE_RESPONSE_BYTES = 5L * 1024L * 1024L
+    }
+
     private val _uiState = MutableStateFlow(UpdateUiState())
     val uiState: StateFlow<UpdateUiState> = _uiState.asStateFlow()
 
@@ -46,12 +50,20 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
                     .header("Accept", "application/vnd.github.v3+json")
                     .build()
 
-                val response = okHttpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    throw Exception("Failed to fetch updates: ${response.code}")
+                val jsonStr = okHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw Exception("Failed to fetch updates: ${response.code}")
+                    }
+                    val body = response.body ?: return@use "[]"
+                    require(body.contentLength() <= MAX_RELEASE_RESPONSE_BYTES) {
+                        "Release metadata exceeds the configured size limit"
+                    }
+                    body.string().also {
+                        require(it.toByteArray(Charsets.UTF_8).size <= MAX_RELEASE_RESPONSE_BYTES) {
+                            "Release metadata exceeds the configured size limit"
+                        }
+                    }
                 }
-
-                val jsonStr = response.body?.string() ?: "[]"
                 val jsonArray = JSONArray(jsonStr)
                 val releaseList = mutableListOf<GithubRelease>()
 
