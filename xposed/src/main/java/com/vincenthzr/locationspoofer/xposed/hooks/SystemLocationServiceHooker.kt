@@ -540,6 +540,33 @@ private fun dispatchFakeLocationAsync(listener: Any, fakeLoc: Any) {
     }
 }
 
+/** Queue a one-shot ILocationCallback delivery and release its Binder registration afterwards. */
+private fun dispatchCurrentLocationCallbackAsync(callback: Any, fakeLoc: Any): Boolean {
+    val binder = (callback as? IInterface)?.asBinder() ?: (callback as? IBinder)
+    val method = callback.javaClass.methods.firstOrNull {
+        it.name == "onLocation" && it.parameterTypes.size == 1
+    } ?: return false
+    return initialLocationDispatchHandler.post {
+        val stillRegistered = if (binder != null) {
+            activeCallbackBinders.containsKey(binder)
+        } else {
+            spoofedListenerInstances.contains(callback)
+        }
+        if (!stillRegistered || binder?.isBinderAlive == false) return@post
+        try {
+            method.invoke(callback, fakeLoc)
+        } catch (error: Throwable) {
+            logLoc("[SysLoc] asynchronous getCurrentLocation callback failed: ${error.cause ?: error}")
+        } finally {
+            if (binder != null) {
+                activeCallbackBinders.remove(binder)
+                ModuleBinderDeaths.unwatch(binder, "location-callback")
+            }
+            spoofedListenerInstances.remove(callback)
+        }
+    }
+}
+
 /** 向 ILocationListener 代理对象主动反射调用 onLocationChanged */
 private fun dispatchFakeLocationToListener(listener: Any, fakeLoc: Any) {
     val clazz = listener.javaClass
@@ -799,7 +826,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                     packageName = pkgName
                                 )
                                 try {
-                                    ModuleBinderDeaths.watch(binder, "location-listener") {
+                                    ModuleBinderDeaths.watch(binder, "location-callback") {
                                         activeCallbackBinders.remove(binder)
                                         logLoc("[SysLoc] Callback binder died: $pkgName")
                                     }
@@ -823,18 +850,9 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                     getJitteredAccuracy()
                                 )
                                 if (fakeLoc != null) {
-                                    val onLocationMethod = callback.javaClass.methods.firstOrNull {
-                                        it.name == "onLocation" && it.parameterTypes.size == 1
-                                    }
-                                    if (onLocationMethod != null) {
-                                        try {
-                                            onLocationMethod.invoke(callback, fakeLoc)
-                                            logLoc("[SysLoc] Proactively dispatched fake location to getCurrentLocation callback for $pkgName (lat=${motion.lat}, lng=${motion.lng}, provider=$provider)"
-                                            )
-                                            return@hookAllMethods createDummyCancellationSignal()
-                                        } catch (t: Throwable) {
-                                            logLoc("[SysLoc] proactive callback invoke failed: $t")
-                                        }
+                                    if (dispatchCurrentLocationCallbackAsync(callback, fakeLoc)) {
+                                        logLoc("[SysLoc] Queued first-fix for getCurrentLocation callback to $pkgName (provider=$provider)")
+                                        return@hookAllMethods createDummyCancellationSignal()
                                     }
                                 }
                             }
@@ -1144,12 +1162,10 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                         getJitteredAccuracy()
                                     )
                                     if (fakeLoc != null) {
-                                        val onLocMethod = callback.javaClass.methods.firstOrNull {
-                                            it.name == "onLocation" && it.parameterTypes.size == 1
+                                        if (dispatchCurrentLocationCallbackAsync(callback, fakeLoc)) {
+                                            logLoc("[SysLoc] LocationProviderManager.getCurrentLocation queued first-fix for $targetPkg (provider=$provider)")
+                                            return@hookAllMethods createDummyCancellationSignal()
                                         }
-                                        onLocMethod?.invoke(callback, fakeLoc)
-                                        logLoc("[SysLoc] LocationProviderManager.getCurrentLocation proactive dispatch for $targetPkg (lat=${motion.lat}, lng=${motion.lng}, provider=$provider)")
-                                        return@hookAllMethods createDummyCancellationSignal()
                                     }
                                 }
                             }
