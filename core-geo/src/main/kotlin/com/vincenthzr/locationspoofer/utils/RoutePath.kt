@@ -13,7 +13,7 @@ object GeoMath {
 
     fun distance(a: LatLng, b: LatLng): Double {
         val dLat = Math.toRadians(b.lat - a.lat)
-        val dLng = Math.toRadians(b.lng - a.lng)
+        val dLng = Math.toRadians(shortestLongitudeDelta(a.lng, b.lng))
         val h = sin(dLat / 2).pow(2) + cos(Math.toRadians(a.lat)) * cos(Math.toRadians(b.lat)) * sin(dLng / 2).pow(2)
         // Floating-point rounding near antipodal points can push h slightly outside [0, 1].
         val boundedH = h.coerceIn(0.0, 1.0)
@@ -24,11 +24,14 @@ object GeoMath {
     fun bearing(from: LatLng, to: LatLng): Float {
         val lat1 = Math.toRadians(from.lat)
         val lat2 = Math.toRadians(to.lat)
-        val dLng = Math.toRadians(to.lng - from.lng)
+        val dLng = Math.toRadians(shortestLongitudeDelta(from.lng, to.lng))
         val y = sin(dLng) * cos(lat2)
         val x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLng)
         return ((Math.toDegrees(atan2(y, x)) + 360.0) % 360.0).toFloat()
     }
+
+    private fun shortestLongitudeDelta(from: Double, to: Double): Double =
+        ((to - from + 540.0) % 360.0) - 180.0
 
     /** Normalize longitude to [-180, 180), including antimeridian crossings. */
     private fun normalizeLongitude(longitude: Double): Double =

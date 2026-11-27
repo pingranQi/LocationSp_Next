@@ -28,7 +28,11 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
 
     init {
         require(points.size >= 2) { "a trajectory needs at least two points" }
-    require(points.zipWithNext().all { (a, b) -> b.tOffsetSec >= a.tOffsetSec }) {
+        require(points.all { point ->
+            point.lat.isFinite() && point.lng.isFinite() && point.tOffsetSec.isFinite() &&
+                point.lat in -90.0..90.0 && point.lng in -180.0..180.0 && point.tOffsetSec >= 0.0
+        }) { "trajectory points must contain finite, in-range coordinates and non-negative timestamps" }
+        require(points.zipWithNext().all { (a, b) -> b.tOffsetSec >= a.tOffsetSec }) {
             "trajectory timestamps must be non-decreasing"
         }
     }
@@ -55,6 +59,7 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
      * 超出范围时钳到首尾（轨迹结束后停在终点）。
      */
     fun positionAt(elapsedSec: Double): CoordinateUtils.LatLng {
+        require(elapsedSec.isFinite()) { "elapsed time must be finite" }
         if (elapsedSec <= points.first().tOffsetSec) {
             return CoordinateUtils.LatLng(points.first().lat, points.first().lng)
         }
@@ -74,7 +79,7 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
         val ratio = if (span <= 0.0) 0.0 else (elapsedSec - a.tOffsetSec) / span
         return CoordinateUtils.LatLng(
             a.lat + (b.lat - a.lat) * ratio,
-            a.lng + (b.lng - a.lng) * ratio
+            interpolateLongitude(a.lng, b.lng, ratio)
         )
     }
 
@@ -85,6 +90,7 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
      * 这样得到的是分段常数速度——与真实运动相比更规整，也便于目标 App 稳定反推配速。
      */
     fun speedAt(elapsedSec: Double): Double {
+        require(elapsedSec.isFinite()) { "elapsed time must be finite" }
         if (points.size < 2) return 0.0
         var lo = 0
         var hi = points.size - 1
@@ -103,6 +109,11 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
             return segmentSpeed(b, c, dt2)
         }
         return segmentSpeed(a, b, dt)
+    }
+
+    private fun interpolateLongitude(from: Double, to: Double, ratio: Double): Double {
+        val delta = ((to - from + 540.0) % 360.0) - 180.0
+        return ((from + delta * ratio + 540.0) % 360.0) - 180.0
     }
 
     private fun segmentSpeed(a: TrajectoryPoint, b: TrajectoryPoint, dt: Double): Double {
@@ -205,6 +216,9 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
             if (raw.isEmpty()) return emptyList()
             val out = ArrayList<TrajectoryPoint>()
             for (p in raw) {
+                if (!p.lat.isFinite() || !p.lng.isFinite() || !p.tOffsetSec.isFinite() ||
+                    p.lat !in -90.0..90.0 || p.lng !in -180.0..180.0 || p.tOffsetSec < 0.0
+                ) continue
                 // 精度过滤：拿不到精度信息时（null）不丢弃
                 val acc = accuracyOf(p)
                 if (acc != null && acc > maxAccuracyM) continue

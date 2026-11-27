@@ -135,6 +135,35 @@ class TrajectoryTrackTest {
     }
 
     @Test
+    fun `rejects non-finite and out-of-range trajectory coordinates`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryTrack(listOf(TrajectoryPoint(0.0, 0.0, 0.0), TrajectoryPoint(Double.NaN, 1.0, 1.0)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryTrack(listOf(TrajectoryPoint(0.0, 0.0, 0.0), TrajectoryPoint(91.0, 1.0, 1.0)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryTrack(listOf(TrajectoryPoint(0.0, 0.0, 0.0), TrajectoryPoint(0.0, 1.0, Double.POSITIVE_INFINITY)))
+        }
+    }
+
+    @Test
+    fun `interpolates trajectory over antimeridian using shortest path`() {
+        val track = TrajectoryTrack(listOf(
+            TrajectoryPoint(0.0, 179.9, 0.0),
+            TrajectoryPoint(0.0, -179.9, 10.0)
+        ))
+        val midpoint = track.positionAt(5.0)
+        assertTrue(kotlin.math.abs(midpoint.lng) > 179.99)
+        assertTrue(kotlin.math.abs(midpoint.lng) <= 180.0)
+        assertEquals(
+            GeoMath.distance(LatLng(0.0, 179.9), LatLng(0.0, -179.9)) / 2.0,
+            GeoMath.distance(LatLng(0.0, 179.9), midpoint),
+            0.5
+        )
+    }
+
+    @Test
     fun `identical timestamps do not crash`() {
         val pts = listOf(
             TrajectoryPoint(start.lat, start.lng, 0.0),

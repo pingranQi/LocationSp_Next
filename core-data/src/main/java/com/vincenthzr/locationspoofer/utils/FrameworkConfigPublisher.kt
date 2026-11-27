@@ -14,11 +14,15 @@ internal interface FrameworkConfigStore {
 internal class FrameworkConfigPublisher {
     private var cleanupNeeded = true
 
+    private companion object {
+        const val SNAPSHOT_RETENTION_MS = 24L * 60L * 60L * 1000L
+    }
+
     fun publish(payload: String, store: FrameworkConfigStore): Long {
         val bytes = payload.toByteArray(Charsets.UTF_8)
         val publishedAt = System.currentTimeMillis()
         val file = if (bytes.size > FrameworkConfigChannel.INLINE_LIMIT_BYTES) {
-            "${FrameworkConfigChannel.FILE_PREFIX}${UUID.randomUUID()}.json"
+            "${FrameworkConfigChannel.FILE_PREFIX}${publishedAt}-${UUID.randomUUID()}.json"
         } else null
         var commitAttempted = false
         try {
@@ -39,9 +43,16 @@ internal class FrameworkConfigPublisher {
             cleanupNeeded = true
             throw error
         }
-        // A delayed reader can retry the current pointer if an older file was removed.
+        // Keep immutable snapshots for 24h: a receiver may have read an old pointer but not
+        // opened its file yet. Existing pre-timestamp files are retained rather than guessed stale.
         if (cleanupNeeded || file != null) runCatching {
-            store.listFiles().filter { FrameworkConfigChannel.isConfigFile(it) && it != file }
+            val cutoff = System.currentTimeMillis() - SNAPSHOT_RETENTION_MS
+            store.listFiles()
+                .filter { FrameworkConfigChannel.isConfigFile(it) && it != file }
+                .filter { name ->
+                    name.substringAfter(FrameworkConfigChannel.FILE_PREFIX)
+                        .substringBefore('-').toLongOrNull()?.let { it < cutoff } == true
+                }
                 .forEach { store.deleteFile(it) }
             cleanupNeeded = file != null
         }
