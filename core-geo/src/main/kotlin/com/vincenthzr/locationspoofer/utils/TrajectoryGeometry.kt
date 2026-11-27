@@ -60,10 +60,6 @@ object TrajectoryGeometry {
         index: Int,
         @Suppress("UNUSED_PARAMETER") gpsBearingDeg: Double? = null
     ): Double {
-        require(points.all { point ->
-            point.lat.isFinite() && point.lng.isFinite() &&
-                point.lat in -90.0..90.0 && point.lng in -180.0..180.0
-        }) { "heading points must contain finite, in-range coordinates" }
         if (points.size < 2) return 0.0
         val i = index.coerceIn(1, points.size - 1)
         val window = 2
@@ -74,6 +70,11 @@ object TrajectoryGeometry {
         while (k > 0 && n < window) {
             val a = points[k - 1]
             val b = points[k]
+            require(
+                a.lat.isFinite() && a.lng.isFinite() && b.lat.isFinite() && b.lng.isFinite() &&
+                    a.lat in -90.0..90.0 && b.lat in -90.0..90.0 &&
+                    a.lng in -180.0..180.0 && b.lng in -180.0..180.0
+            ) { "heading points must contain finite, in-range coordinates" }
             val dLng = ((b.lng - a.lng + 540.0) % 360.0) - 180.0
             val dx = dLng * 111320.0 * kotlin.math.cos(Math.toRadians(b.lat))
             val dy = (b.lat - a.lat) * 111320.0
