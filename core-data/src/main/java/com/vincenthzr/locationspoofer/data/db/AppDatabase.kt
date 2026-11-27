@@ -16,7 +16,7 @@ import androidx.room.RoomDatabase
         TrajectoryEntity::class
     ],
     version = 11,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun environmentDao(): EnvironmentDao

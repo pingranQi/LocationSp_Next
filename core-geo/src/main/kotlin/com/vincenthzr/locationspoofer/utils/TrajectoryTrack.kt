@@ -131,6 +131,7 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
      * 系数 = 目标时长 / 原始时长；回放时用 原始时刻 × 系数 去查位置。
      */
     fun timeScaleFor(targetDurationSec: Double): Double {
+        require(targetDurationSec.isFinite() && targetDurationSec > 0.0) { "target duration must be finite and positive" }
         val d = durationSec
         if (d <= 0.0) return 1.0
         return targetDurationSec / d
@@ -153,6 +154,8 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
         minDistanceM: Double = DEFAULT_SMOOTH_MIN_DISTANCE_M,
         turnThresholdDeg: Double = DEFAULT_TURN_THRESHOLD_DEG
     ): List<TrajectoryPoint> {
+        require(minDistanceM.isFinite() && minDistanceM >= 0.0)
+        require(turnThresholdDeg.isFinite() && turnThresholdDeg in 0.0..180.0)
         if (points.size <= 2) return points
         val out = ArrayList<TrajectoryPoint>()
         out.add(points.first())
@@ -213,6 +216,10 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
             turnThresholdDeg: Double = DEFAULT_TURN_THRESHOLD_DEG,
             accuracyOf: (TrajectoryPoint) -> Double? = { null }
         ): List<TrajectoryPoint> {
+            require(minDistanceM.isFinite() && minDistanceM >= 0.0)
+            require(maxAccuracyM.isFinite() && maxAccuracyM > 0.0)
+            require(maxSpeedMps.isFinite() && maxSpeedMps > 0.0)
+            require(turnThresholdDeg.isFinite() && turnThresholdDeg in 0.0..180.0)
             if (raw.isEmpty()) return emptyList()
             val out = ArrayList<TrajectoryPoint>()
             for (p in raw) {
@@ -221,7 +228,7 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
                 ) continue
                 // 精度过滤：拿不到精度信息时（null）不丢弃
                 val acc = accuracyOf(p)
-                if (acc != null && acc > maxAccuracyM) continue
+                if (acc != null && (!acc.isFinite() || acc < 0.0 || acc > maxAccuracyM)) continue
                 // 时间单调
                 if (out.isNotEmpty() && p.tOffsetSec < out.last().tOffsetSec) continue
                 if (out.isNotEmpty()) {
