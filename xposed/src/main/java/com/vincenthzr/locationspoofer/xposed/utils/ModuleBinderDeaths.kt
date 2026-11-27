@@ -4,23 +4,26 @@ import android.os.IBinder
 
 /** One death recipient per remote Binder; replace callbacks on re-registration and unlink on unregister. */
 internal object ModuleBinderDeaths {
-    private data class Entry(val recipient: IBinder.DeathRecipient, var onDeath: () -> Unit)
+    private data class Entry(
+        val recipient: IBinder.DeathRecipient,
+        val callbacks: LinkedHashMap<String, () -> Unit>
+    )
     private val entries = LinkedHashMap<IBinder, Entry>()
     private var closed = false
 
     @Synchronized
-    fun watch(binder: IBinder, onDeath: () -> Unit) {
+    fun watch(binder: IBinder, registrationKey: String = "default", onDeath: () -> Unit) {
         if (closed || !binder.isBinderAlive) return
-        entries[binder]?.let { it.onDeath = onDeath; return }
+        entries[binder]?.let { it.callbacks[registrationKey] = onDeath; return }
         lateinit var recipient: IBinder.DeathRecipient
         recipient = IBinder.DeathRecipient {
             val callback = synchronized(this@ModuleBinderDeaths) {
                 val entry = entries.remove(binder)
-                if (closed || entry?.recipient !== recipient) null else entry.onDeath
+                if (closed || entry?.recipient !== recipient) emptyList() else entry.callbacks.values.toList()
             }
-            runCatching { callback?.invoke() }
+            callback.forEach { runCatching { it() } }
         }
-        entries[binder] = Entry(recipient, onDeath)
+        entries[binder] = Entry(recipient, linkedMapOf(registrationKey to onDeath))
         try {
             binder.linkToDeath(recipient, 0)
         } catch (error: Throwable) {
