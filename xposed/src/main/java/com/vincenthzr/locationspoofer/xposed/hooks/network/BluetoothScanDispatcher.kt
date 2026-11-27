@@ -475,5 +475,292 @@ internal fun LocationHooker.hookBluetoothLE(
         } catch (_: Throwable) {}
     }
 
-    // Do not override ScanFilter.matches: real scan results must retain the app's native filters.
+    // 12. Hook BluetoothManager.getConnectedDevices & getDevicesMatchingConnectionStates & getAdapter
+    val bluetoothManagerClass = XposedHelpers.findClassIfExists("android.bluetooth.BluetoothManager", classLoader)
+    if (bluetoothManagerClass != null) {
+        try {
+            XposedHelpers.hookAllMethods(bluetoothManagerClass, "getAdapter") { chain, _ ->
+                val result = chain.proceed(chain.args.toTypedArray())
+                if (result != null) return@hookAllMethods result
+                val config = readConfig()
+                if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
+                    val adapterClass = XposedHelpers.findClassIfExists("android.bluetooth.BluetoothAdapter", classLoader)
+                    if (adapterClass != null) {
+                        return@hookAllMethods XposedHelpers.callStaticMethod(adapterClass, "getDefaultAdapter")
+                    }
+                }
+                return@hookAllMethods null
+            }
+        } catch (_: Throwable) {}
+
+        try {
+            XposedHelpers.hookAllMethods(bluetoothManagerClass, "getConnectedDevices") { chain, _ ->
+                val config = readConfig()
+                if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
+                    val bluetoothArray = config.optJSONArray("bluetooth_json")
+                    if (bluetoothArray != null && bluetoothArray.length() > 0) {
+                        val list = java.util.ArrayList<Any>()
+                        for (i in 0 until bluetoothArray.length()) {
+                            val obj = bluetoothArray.getJSONObject(i)
+                            if (obj.optBoolean("isConnected", false) || obj.optBoolean("isDesignated", false)) {
+                                val address = obj.optString("address", "00:00:00:00:00:00")
+                                val dev = createBluetoothDevice(classLoader, address)
+                                if (dev != null) list.add(dev)
+                            }
+                        }
+                        if (list.isNotEmpty()) return@hookAllMethods list
+                    }
+                }
+                return@hookAllMethods chain.proceed(chain.args.toTypedArray())
+            }
+        } catch (_: Throwable) {}
+
+        try {
+            XposedHelpers.hookAllMethods(bluetoothManagerClass, "getDevicesMatchingConnectionStates") { chain, _ ->
+                val config = readConfig()
+                if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
+                    val bluetoothArray = config.optJSONArray("bluetooth_json")
+                    if (bluetoothArray != null && bluetoothArray.length() > 0) {
+                        val list = java.util.ArrayList<Any>()
+                        for (i in 0 until bluetoothArray.length()) {
+                            val obj = bluetoothArray.getJSONObject(i)
+                            if (obj.optBoolean("isConnected", false) || obj.optBoolean("isDesignated", false)) {
+                                val address = obj.optString("address", "00:00:00:00:00:00")
+                                val dev = createBluetoothDevice(classLoader, address)
+                                if (dev != null) list.add(dev)
+                            }
+                        }
+                        if (list.isNotEmpty()) return@hookAllMethods list
+                    }
+                }
+                return@hookAllMethods chain.proceed(chain.args.toTypedArray())
+            }
+        } catch (_: Throwable) {}
+    }
+
+    XposedBridge.log("[LocationSpoofer] Bluetooth LE hooks installed")
 }
+
+// 辅助函数：安全反射调用 onScanResult
+internal fun LocationHooker.dispatchScanResultToCallback(callback: Any, scanResultObj: Any) {
+        var dispatched = false
+        var c: Class<*>? = callback.javaClass
+        while (c != null && c != Any::class.java) {
+            for (m in c.declaredMethods) {
+                if (m.name == "onScanResult") {
+                    if (m.parameterCount == 2) {
+                        try {
+                            m.isAccessible = true
+                            m.invoke(callback, 1 /* CALLBACK_TYPE_ALL_MATCHES */, scanResultObj)
+                            dispatched = true
+                            break
+                        } catch (e: Throwable) {
+                            XposedBridge.log("[LocationSpoofer] dispatch onScanResult (2-args) direct error: ${e.cause ?: e}")
+                        }
+                    } else if (m.parameterCount == 1) {
+                        try {
+                            m.isAccessible = true
+                            m.invoke(callback, scanResultObj)
+                            dispatched = true
+                            break
+                        } catch (e: Throwable) {
+                            XposedBridge.log("[LocationSpoofer] dispatch onScanResult (1-arg) direct error: ${e.cause ?: e}")
+                        }
+                    }
+                }
+            }
+            if (dispatched) break
+            c = c.superclass
+        }
+        if (!dispatched) {
+            try {
+                XposedHelpers.callMethod(callback, "onScanResult", 1, scanResultObj)
+                dispatched = true
+            } catch (_: Throwable) {
+                try {
+                    XposedHelpers.callMethod(callback, "onScanResult", scanResultObj)
+                    dispatched = true
+                } catch (_: Throwable) {}
+            }
+        }
+        if (!dispatched) {
+            try {
+                val inner = XposedHelpers.getObjectField(callback, "mScanCallback") ?:
+                            XposedHelpers.getObjectField(callback, "mCallback")
+                if (inner != null) {
+                    dispatchScanResultToCallback(inner, scanResultObj)
+                }
+            } catch (_: Throwable) {}
+        }
+    }
+
+// 辅助函数：安全反射调用 onBatchScanResults
+internal fun LocationHooker.dispatchBatchResultsToCallback(callback: Any, results: List<Any>) {
+        var dispatched = false
+        var c: Class<*>? = callback.javaClass
+        while (c != null && c != Any::class.java) {
+            for (m in c.declaredMethods) {
+                if (m.name == "onBatchScanResults" && m.parameterCount == 1) {
+                    try {
+                        m.isAccessible = true
+                        m.invoke(callback, results)
+                        dispatched = true
+                        break
+                    } catch (_: Throwable) {}
+                }
+            }
+            if (dispatched) break
+            c = c.superclass
+        }
+        if (!dispatched) {
+            try {
+                XposedHelpers.callMethod(callback, "onBatchScanResults", results)
+            } catch (_: Throwable) {}
+        }
+    }
+
+// BLE 扫描结果伪造的核心分发逻辑
+internal val syntheticBleDelivery = com.vincenthzr.locationspoofer.xposed.utils.CallScope<Boolean>()
+
+internal fun LocationHooker.deliverBleScanResults(config: JSONObject, callback: Any, cl: ClassLoader) {
+        val mainHandler = Handler(Looper.getMainLooper())
+        val scanRecordClass = XposedHelpers.findClassIfExists("android.bluetooth.le.ScanRecord", cl)
+        if (!config.optBoolean("mock_bluetooth", true)) return
+        val bluetoothArray = config.optJSONArray("bluetooth_json") ?: return
+        if (bluetoothArray.length() == 0) return
+
+        val results = java.util.ArrayList<Any>()
+        val targetScanRecordClass = XposedHelpers.findClassIfExists("android.bluetooth.le.ScanRecord", cl) ?: scanRecordClass
+        val timestampNanos = SystemClock.elapsedRealtimeNanos()
+
+        for (i in 0 until bluetoothArray.length()) {
+            try {
+                val obj = bluetoothArray.getJSONObject(i)
+                val address = obj.optString("address", "00:11:22:33:44:55")
+                val name = obj.optString("name", "")
+                val baseRssi = obj.optInt("rssi", -60)
+                val rssi = baseRssi + (if (config.optBoolean("enable_jitter", true)) Random.nextInt(-2, 3) else 0)
+                val hexRecord = obj.optString("scanRecordHex", "")
+                val rawBytes = buildScanRecordBytes(name, hexRecord, address)
+
+                val device = createBluetoothDevice(cl, address)
+                if (device == null) {
+                    XposedBridge.log("[LocationSpoofer] 创建虚拟蓝牙设备失败 address=$address")
+                    continue
+                }
+
+                var scanRecord: Any? = null
+                if (targetScanRecordClass != null && rawBytes.isNotEmpty()) {
+                    try {
+                        scanRecord = XposedHelpers.callStaticMethod(targetScanRecordClass, "parseFromBytes", rawBytes)
+                    } catch (e: Throwable) {
+                        XposedBridge.log("[LocationSpoofer] ScanRecord.parseFromBytes 异常: $e")
+                    }
+                }
+
+                val scanResultObj = createScanResult(cl, device, scanRecord, rssi, timestampNanos)
+                if (scanResultObj != null) {
+                    results.add(scanResultObj)
+                    mainHandler.post {
+                        try {
+                            syntheticBleDelivery.withValue(true) { dispatchScanResultToCallback(callback, scanResultObj) }
+                            XposedBridge.log("[LocationSpoofer] 成功派发 onScanResult 给 ${callback.javaClass.name} | MAC=$address RSSI=$rssi 广播包长=${rawBytes.size}")
+                        } catch (e: Throwable) {
+                            XposedBridge.log("[LocationSpoofer] 派发 onScanResult 异常: $e")
+                        }
+                    }
+                } else {
+                    XposedBridge.log("[LocationSpoofer] 创建 ScanResult 失败 address=$address")
+                }
+            } catch (e: Throwable) {
+                XposedBridge.log("[LocationSpoofer] 构造虚拟BLE失败: $e")
+            }
+        }
+        if (results.isNotEmpty()) {
+            mainHandler.post {
+                try {
+                    syntheticBleDelivery.withValue(true) { dispatchBatchResultsToCallback(callback, results) }
+                } catch (_: Throwable) {}
+            }
+        }
+    }
+
+// 启动周期性定时广播模拟真实信标心跳 (约每 200ms 发送一次)
+internal fun LocationHooker.startBleTimer(callback: Any, cl: ClassLoader) {
+        bleScanTimers.remove(callback)?.cancel()
+        val timer = java.util.Timer("LocationSpoofer-BleTimer", true)
+        bleScanTimers[callback] = timer
+
+        // 立即执行第一次
+        val config = readConfig()
+        if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
+            deliverBleScanResults(config, callback, cl)
+        }
+
+        timer.schedule(object : java.util.TimerTask() {
+            override fun run() {
+                val cfg = readConfig()
+                if (cfg == null || !cfg.optBoolean("active", false) || !cfg.optBoolean("mock_bluetooth", true)) {
+                    cancel()
+                    bleScanTimers.remove(callback)
+                    return
+                }
+                deliverBleScanResults(cfg, callback, cl)
+            }
+        }, 200L, 200L)
+    }
+
+internal fun LocationHooker.stopBleTimer(callback: Any) {
+        bleScanTimers.remove(callback)?.cancel()
+    }
+
+internal fun LocationHooker.deliverOldLeScanResults(config: JSONObject, callback: Any, cl: ClassLoader) {
+        val mainHandler = Handler(Looper.getMainLooper())
+        if (!config.optBoolean("mock_bluetooth", true)) return
+        val bluetoothArray = config.optJSONArray("bluetooth_json") ?: return
+        if (bluetoothArray.length() == 0) return
+
+        for (i in 0 until bluetoothArray.length()) {
+            try {
+                val obj = bluetoothArray.getJSONObject(i)
+                val address = obj.optString("address", "00:11:22:33:44:55")
+                val name = obj.optString("name", "")
+                val baseRssi = obj.optInt("rssi", -60)
+                val rssi = baseRssi + (if (config.optBoolean("enable_jitter", true)) Random.nextInt(-2, 3) else 0)
+                val hexRecord = obj.optString("scanRecordHex", "")
+                val rawBytes = buildScanRecordBytes(name, hexRecord, address)
+
+                val device = createBluetoothDevice(cl, address) ?: continue
+                mainHandler.post {
+                    try {
+                        XposedHelpers.callMethod(callback, "onLeScan", device, rssi, rawBytes)
+                    } catch (_: Throwable) {}
+                }
+            } catch (e: Throwable) {
+                XposedBridge.log("[LocationSpoofer] 构造旧版LeScan失败: $e")
+            }
+        }
+    }
+
+internal fun LocationHooker.startOldLeScanTimer(callback: Any, cl: ClassLoader) {
+        bleScanTimers.remove(callback)?.cancel()
+        val timer = java.util.Timer("LocationSpoofer-OldBleTimer", true)
+        bleScanTimers[callback] = timer
+
+        val config = readConfig()
+        if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
+            deliverOldLeScanResults(config, callback, cl)
+        }
+
+        timer.schedule(object : java.util.TimerTask() {
+            override fun run() {
+                val cfg = readConfig()
+                if (cfg == null || !cfg.optBoolean("active", false) || !cfg.optBoolean("mock_bluetooth", true)) {
+                    cancel()
+                    bleScanTimers.remove(callback)
+                    return
+                }
+                deliverOldLeScanResults(cfg, callback, cl)
+            }
+        }, 200L, 200L)
+    }
