@@ -25,6 +25,7 @@ data class UpdateUiState(
     val releases: List<GithubRelease> = emptyList(),
     val activeDownloadId: Long? = null,
     val activeDownloadUrl: String? = null,
+    val activeDownloadSha256: String? = null,
     val downloadProgress: Int = 0,
     val downloadStatus: Int = DownloadManager.STATUS_PENDING
 )
@@ -63,6 +64,8 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
 
                     var downloadUrl: String? = null
                     var downloadUrl32Bit: String? = null
+                    var downloadSha256: String? = null
+                    var download32Sha256: String? = null
                     val assets = obj.optJSONArray("assets")
                     if (assets != null) {
                         for (j in 0 until assets.length()) {
@@ -70,15 +73,18 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
                             val assetName = asset.optString("name", "")
                             if (assetName.endsWith(".apk") && isAssetForCurrentScheme(assetName)) {
                                 val url = asset.optString("browser_download_url")
+                                val digest = asset.optString("digest").removePrefix("sha256:")
+                                    .takeIf { it.matches(Regex("[A-Fa-f0-9]{64}")) }
                                 if (assetName.contains("armeabi-v7a") || assetName.contains("32")) {
                                     downloadUrl32Bit = url
+                                    download32Sha256 = digest
                                 } else if (assetName.contains("arm64-v8a")) {
                                     downloadUrl = url
-                                } else {
-                                    // 通用安装包，如果没有专门的64位，就默认用通用包作为主链接
-                                    if (downloadUrl == null) {
-                                        downloadUrl = url
-                                    }
+                                    downloadSha256 = digest
+                                } else if (downloadUrl == null) {
+                                    // 通用 APK 仅作为主链接；必须有 GitHub 提供的 asset digest 才允许安装。
+                                    downloadUrl = url
+                                    downloadSha256 = digest
                                 }
                             }
                         }
@@ -95,7 +101,9 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
                             downloadUrl,
                             downloadUrl32Bit,
                             publishedAt,
-                            isPrerelease
+                            isPrerelease,
+                            downloadSha256,
+                            download32Sha256
                         )
                     )
                 }
@@ -111,13 +119,20 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    fun startDownload(url: String, versionName: String) {
-        val fileName = "LocationSpoofer_$versionName.apk"
+    fun startDownload(url: String, versionName: String, expectedSha256: String? = null) {
+        val digest = expectedSha256?.removePrefix("sha256:")?.lowercase()
+        if (digest == null || !digest.matches(Regex("[a-f0-9]{64}"))) {
+            _uiState.update { it.copy(error = "Release 未提供有效 SHA-256，已拒绝安装该 APK。") }
+            return
+        }
+        val fileName = "LocationSpoofer_${versionName.replace(Regex("[^A-Za-z0-9._-]"), "_")}.apk"
         val downloadId = updateManager.downloadApk(url, fileName)
         _uiState.update {
             it.copy(
                 activeDownloadId = downloadId,
                 activeDownloadUrl = url,
+                activeDownloadSha256 = digest,
+                error = null,
                 downloadProgress = 0,
                 downloadStatus = DownloadManager.STATUS_PENDING
             )
@@ -149,8 +164,16 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
     }
 
     fun installApk() {
-        _uiState.value.activeDownloadId?.let { downloadId ->
-            updateManager.installApk(downloadId)
+        val state = _uiState.value
+        val downloadId = state.activeDownloadId ?: return
+        val digest = state.activeDownloadSha256 ?: run {
+            _uiState.update { it.copy(error = "缺少 APK SHA-256，拒绝安装。") }
+            return
+        }
+        try {
+            updateManager.installApk(downloadId, digest)
+        } catch (error: Exception) {
+            _uiState.update { it.copy(error = error.message ?: "APK 完整性验证失败，已拒绝安装。") }
         }
     }
 
@@ -161,6 +184,7 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
                 it.copy(
                     activeDownloadId = null,
                     activeDownloadUrl = null,
+                    activeDownloadSha256 = null,
                     downloadProgress = 0,
                     downloadStatus = DownloadManager.STATUS_PENDING
                 )

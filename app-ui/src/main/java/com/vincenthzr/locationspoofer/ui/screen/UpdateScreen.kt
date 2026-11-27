@@ -142,7 +142,7 @@ fun UpdateScreen(
                     latestRelease = latestRelease,
                     isDark = isDark,
                     onCheckAgain = { updateViewModel.fetchReleases() },
-                    onDownload = { url, version -> updateViewModel.startDownload(url, version) },
+                    onDownload = { url, version, digest -> updateViewModel.startDownload(url, version, digest) },
                     onInstall = { updateViewModel.installApk() },
                     onCancelDownload = { updateViewModel.cancelDownload() },
                     onIgnore = { version ->
@@ -281,7 +281,7 @@ private fun CurrentVersionHeroCard(
     latestRelease: GithubRelease?,
     isDark: Boolean,
     onCheckAgain: () -> Unit,
-    onDownload: (String, String) -> Unit,
+    onDownload: (String, String, String?) -> Unit,
     onInstall: () -> Unit,
     onCancelDownload: () -> Unit,
     onIgnore: (String) -> Unit
@@ -479,7 +479,7 @@ private fun CurrentVersionHeroCard(
                         if (latestDownloadUrl != null) {
                             Button(
                                 onClick = {
-                                    onDownload(latestDownloadUrl, latestRelease.versionName)
+                                    onDownload(latestDownloadUrl, latestRelease.versionName, latestRelease.downloadSha256)
                                 },
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
@@ -499,7 +499,8 @@ private fun CurrentVersionHeroCard(
                                 onClick = {
                                     onDownload(
                                         latestDownloadUrl32Bit,
-                                        "${latestRelease.versionName}_32bit"
+                                        "${latestRelease.versionName}_32bit",
+                                        latestRelease.download32Sha256
                                     )
                                 },
                                 shape = RoundedCornerShape(12.dp),
@@ -542,7 +543,7 @@ private fun ReleaseItemCard(
     isMergedRelease: Boolean,
     mergedCount: Int,
     uiState: UpdateUiState,
-    onDownload: (String, String) -> Unit
+    onDownload: (String, String, String?) -> Unit
 ) {
     MiuixCard(
         modifier = Modifier.fillMaxWidth(),
@@ -651,7 +652,7 @@ private fun ReleaseItemCard(
                         if (releaseDownloadUrl != null) {
                             Button(
                                 onClick = {
-                                    onDownload(releaseDownloadUrl, release.versionName)
+                                    onDownload(releaseDownloadUrl, release.versionName, release.downloadSha256)
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
@@ -672,7 +673,8 @@ private fun ReleaseItemCard(
                                 onClick = {
                                     onDownload(
                                         releaseDownloadUrl32Bit,
-                                        "${release.versionName}_32bit"
+                                        "${release.versionName}_32bit",
+                                        release.download32Sha256
                                     )
                                 },
                                 shape = RoundedCornerShape(10.dp),
