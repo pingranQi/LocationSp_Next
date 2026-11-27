@@ -518,6 +518,28 @@ private fun LocationHooker.buildMockNmeaSentences(
     return sentences
 }
 
+/** Queue the registration-time first fix outside the incoming system-server Binder transaction. */
+private val initialLocationDispatchHandler by lazy {
+    android.os.Handler(android.os.Looper.getMainLooper())
+}
+
+private fun dispatchFakeLocationAsync(listener: Any, fakeLoc: Any) {
+    initialLocationDispatchHandler.post {
+        val binder = (listener as? IInterface)?.asBinder() ?: (listener as? IBinder)
+        val stillRegistered = if (binder != null) {
+            activeListenerBinders.containsKey(binder) || activeCallbackBinders.containsKey(binder)
+        } else {
+            spoofedListenerInstances.contains(listener)
+        }
+        if (!stillRegistered || binder?.isBinderAlive == false) return@post
+        try {
+            dispatchFakeLocationToListener(listener, fakeLoc)
+        } catch (error: Throwable) {
+            logLoc("[SysLoc] asynchronous first-fix dispatch failed: $error")
+        }
+    }
+}
+
 /** 向 ILocationListener 代理对象主动反射调用 onLocationChanged */
 private fun dispatchFakeLocationToListener(listener: Any, fakeLoc: Any) {
     val clazz = listener.javaClass
@@ -688,8 +710,8 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                     )
                                     if (fakeLoc != null) {
                                         try {
-                                            dispatchFakeLocationToListener(listener, fakeLoc)
-                                            logLoc("[SysHook] Proactively dispatched instant fake location to listener for ${explicitPkg ?: "caller"} (provider=$provider)"
+                                            dispatchFakeLocationAsync(listener, fakeLoc)
+                                            logLoc("[SysHook] Queued instant fake location for listener for ${explicitPkg ?: "caller"} (provider=$provider)"
                                             )
                                         } catch (t: Throwable) {
                                             logLoc("[SysHook] instant proactive dispatch failed: $t")
@@ -1198,8 +1220,8 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                     )
                                     if (fakeLoc != null) {
                                         try {
-                                            dispatchFakeLocationToListener(listener, fakeLoc)
-                                            logLoc("[SysLoc] LocationProviderManager.$mName proactive dispatch for $pkgName (lat=${motion.lat}, lng=${motion.lng}, provider=$providerName)")
+                                            dispatchFakeLocationAsync(listener, fakeLoc)
+                                            logLoc("[SysLoc] LocationProviderManager.$mName queued first-fix dispatch for $pkgName (lat=${motion.lat}, lng=${motion.lng}, provider=$providerName)")
                                         } catch (t: Throwable) {
                                             logLoc("[SysLoc] proactive dispatch error: $t")
                                         }
