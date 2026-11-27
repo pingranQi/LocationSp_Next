@@ -21,7 +21,7 @@ internal object EncryptedTokenStore {
         if (!stored.startsWith(PREFIX)) {
             // One-time plaintext migration. Do not fall back to plaintext if encryption fails.
             return try {
-                val encrypted = encrypt(stored)
+                val encrypted = encrypt(name, stored)
                 if (prefs.edit().putString(name, encrypted).commit()) {
                     stored
                 } else {
@@ -36,7 +36,7 @@ internal object EncryptedTokenStore {
             }
         }
         return try {
-            decrypt(stored.removePrefix(PREFIX))
+            decrypt(name, stored.removePrefix(PREFIX))
         } catch (_: Exception) {
             ""
         }
@@ -48,7 +48,7 @@ internal object EncryptedTokenStore {
             return
         }
         val encoded = try {
-            encrypt(value)
+            encrypt(name, value)
         } catch (_: Exception) {
             // Preserve a previously encrypted credential on transient Keystore errors.
             // Never retain a legacy plaintext value when encryption is unavailable.
@@ -78,20 +78,22 @@ internal object EncryptedTokenStore {
         return generator.generateKey()
     }
 
-    private fun encrypt(value: String): String {
+    private fun encrypt(name: String, value: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
+        cipher.updateAAD(name.toByteArray(Charsets.UTF_8))
         val packed = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
         return PREFIX + Base64.encodeToString(packed, Base64.NO_WRAP)
     }
 
-    private fun decrypt(encoded: String): String {
+    private fun decrypt(name: String, encoded: String): String {
         val packed = Base64.decode(encoded, Base64.NO_WRAP)
         require(packed.size > 12) { "Invalid encrypted token payload" }
         val iv = packed.copyOfRange(0, 12)
         val ciphertext = packed.copyOfRange(12, packed.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
+        cipher.updateAAD(name.toByteArray(Charsets.UTF_8))
         return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
     }
 }
