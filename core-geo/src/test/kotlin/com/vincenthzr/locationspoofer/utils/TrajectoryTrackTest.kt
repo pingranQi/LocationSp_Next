@@ -218,7 +218,7 @@ class TrajectoryTrackTest {
     @Test
     fun `smooth returns short tracks unchanged`() {
         val one = listOf(TrajectoryPoint(start.lat, start.lng, 0.0))
-        assertEquals(1, TrajectoryTrack(one).smooth().size)
+        assertThrows(IllegalArgumentException::class.java) { TrajectoryTrack(one) }
         val a = GeoMath.destination(start, 0.0, 1.0)
         val two = listOf(
             TrajectoryPoint(start.lat, start.lng, 0.0),
@@ -243,4 +243,4 @@ class TrajectoryTrackTest {
     // 平滑：把密集 GPS 采样简化成干净的路点序列
     // ==============================================================
 
-}\n
+}
