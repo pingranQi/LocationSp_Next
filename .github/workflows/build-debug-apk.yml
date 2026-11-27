@@ -28,6 +28,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Keep workflow_dispatch input out of inline shell source.
+      GOOGLE_MAPS_API_KEY: ${{ inputs.google_maps_api_key }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -173,11 +176,8 @@ jobs:
       - name: Build APKs
         id: build
         continue-on-error: true
-        env:
-          GOOGLE_MAPS_API_KEY: ${{ inputs.google_maps_api_key }}
-          SCHEME_INPUT: ${{ inputs.scheme }}
         run: |
-          case "$SCHEME_INPUT" in
+          case "${{ inputs.scheme }}" in
             scoped) TASKS=":app:assembleScopedDebug" ;;
             global) TASKS=":app:assembleGlobalDebug" ;;
             both)   TASKS=":app:assembleScopedDebug :app:assembleGlobalDebug" ;;
