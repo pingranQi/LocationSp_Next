@@ -174,7 +174,7 @@ class SettingsManager(context: Context) {
      * 横穿地图的直线，看起来很假；闭合后就是自然的循环。
      */
     var autoCloseTrajectoryLoop: Boolean
-        get() = prefs.getBoolean("auto_close_trajectory_loop", true)
+        get() = prefs.getBoolean("auto_close_trajectory_loop", false)
         set(value) = prefs.edit().putBoolean("auto_close_trajectory_loop", value).apply()
 
     /**

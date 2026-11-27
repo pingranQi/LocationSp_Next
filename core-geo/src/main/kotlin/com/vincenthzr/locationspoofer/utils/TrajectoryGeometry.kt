@@ -118,7 +118,7 @@ object TrajectoryGeometry {
     }
 
     /** 起终点接近多少米内视为“在附近”，触发闭合 */
-    const val DEFAULT_CLOSE_THRESHOLD_M = 15.0
+    const val DEFAULT_CLOSE_THRESHOLD_M = 5.0
 
     /** 箭头长度（米） */
     const val DEFAULT_ARROW_LENGTH_M = 2.0

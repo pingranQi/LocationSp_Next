@@ -62,16 +62,16 @@ internal fun LocationHooker.hookBluetoothLE(
                                     !it.javaClass.name.contains("PendingIntent") &&
                                     !it.javaClass.name.contains("WorkSource")
                         }
-                    if (callback != null) {
-                        XposedBridge.log("[LocationSpoofer] 成功拦截 $scanName, 目标回调=${callback.javaClass.name}, 启动心跳分发")
+                    // Keep the real Bluetooth HAL scan and overlay synthetic results only after success.
+                    val result = chain.proceed(chain.args.toTypedArray())
+                    if (callback != null && (method !is java.lang.reflect.Method ||
+                            method.returnType != Int::class.javaPrimitiveType || result == 0)) {
+                        XposedBridge.log("[LocationSpoofer] Native $scanName accepted; overlay synthetic results")
                         startBleTimer(callback, classLoader)
-                    } else {
-                        XposedBridge.log("[LocationSpoofer] $scanName 未找到匹配的 ScanCallback, args=${chain.args.map { it?.javaClass?.name }}")
+                    } else if (callback == null) {
+                        XposedBridge.log("[LocationSpoofer] $scanName callback not identified; native scan left untouched")
                     }
-                    if (method is java.lang.reflect.Method && method.returnType == Int::class.javaPrimitiveType) {
-                        return@hookAllMethods 0
-                    }
-                    return@hookAllMethods null
+                    return@hookAllMethods result
                 }
             } catch (e: Throwable) {
                 XposedBridge.log("[LocationSpoofer] Hook BluetoothLeScanner.$scanName 异常: $e")
@@ -107,11 +107,12 @@ internal fun LocationHooker.hookBluetoothLE(
                 }
                 val callback = chain.args.firstOrNull { isLeScanCallback(it) }
                     ?: chain.args.lastOrNull { it != null && it !is Array<*> }
-                if (callback != null) {
-                    XposedBridge.log("[LocationSpoofer] 成功拦截 startLeScan, 目标回调=${callback.javaClass.name}")
+                val result = chain.proceed(chain.args.toTypedArray()) as? Boolean ?: false
+                if (result && callback != null) {
+                    XposedBridge.log("[LocationSpoofer] Native startLeScan accepted; overlay synthetic results")
                     startOldLeScanTimer(callback, classLoader)
                 }
-                return@hookAllMethods true
+                return@hookAllMethods result
             }
         } catch (_: Throwable) {}
 
@@ -142,43 +143,7 @@ internal fun LocationHooker.hookBluetoothLE(
             }
         } catch (_: Throwable) {}
 
-        // 5. Hook BluetoothAdapter 状态查询与特性支持
-        val booleanTrueMethods = arrayOf(
-            "isEnabled",
-            "isLeEnabled",
-            "getLeAccess",
-            "isOffloadedFilteringSupported",
-            "isOffloadedScanBatchingSupported",
-            "isMultipleAdvertisementSupported",
-            "isLe2MPhySupported",
-            "isLeCodedPhySupported",
-            "isLeExtendedAdvertisingSupported",
-            "isLePeriodicAdvertisingSupported"
-        )
-        for (mName in booleanTrueMethods) {
-            try {
-                XposedHelpers.hookAllMethods(bluetoothAdapterClass, mName) { chain, _ ->
-                    val config = readConfig()
-                    if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                        return@hookAllMethods true
-                    }
-                    return@hookAllMethods chain.proceed(chain.args.toTypedArray())
-                }
-            } catch (_: Throwable) {}
-        }
-
-        val stateMethods = arrayOf("getState", "getLeState")
-        for (mName in stateMethods) {
-            try {
-                XposedHelpers.hookAllMethods(bluetoothAdapterClass, mName) { chain, _ ->
-                    val config = readConfig()
-                    if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                        return@hookAllMethods 12 // BluetoothAdapter.STATE_ON
-                    }
-                    return@hookAllMethods chain.proceed(chain.args.toTypedArray())
-                }
-            } catch (_: Throwable) {}
-        }
+        // Do not fabricate adapter power/state or chipset capabilities; retain native hardware state.
 
         // 6. Hook BluetoothAdapter.getBluetoothLeScanner
         try {
@@ -218,7 +183,9 @@ internal fun LocationHooker.hookBluetoothLE(
                 if (!config.optBoolean("active", false) || !config.optBoolean("mock_bluetooth", true)) {
                     return@hookAllMethods chain.proceed(chain.args.toTypedArray())
                 }
+                val nativeBonded = chain.proceed(chain.args.toTypedArray()) as? Set<*>
                 val bondedSet = java.util.HashSet<Any>()
+                if (nativeBonded != null) bondedSet.addAll(nativeBonded.filterNotNull())
                 try {
                     val bluetoothArray = config.optJSONArray("bluetooth_json")
                     if (bluetoothArray != null && bluetoothArray.length() > 0) {
@@ -243,6 +210,8 @@ internal fun LocationHooker.hookBluetoothLE(
                 if (!config.optBoolean("active", false) || !config.optBoolean("mock_bluetooth", true)) {
                     return@hookAllMethods chain.proceed(chain.args.toTypedArray())
                 }
+                val started = chain.proceed(chain.args.toTypedArray()) as? Boolean ?: false
+                if (!started) return@hookAllMethods started
                 val bluetoothArray = config.optJSONArray("bluetooth_json")
                 if (bluetoothArray != null && bluetoothArray.length() > 0) {
                     try {
@@ -277,7 +246,7 @@ internal fun LocationHooker.hookBluetoothLE(
                         }
                     } catch (_: Throwable) {}
                 }
-                return@hookAllMethods true
+                return@hookAllMethods started
             }
         } catch (_: Throwable) {}
     }
