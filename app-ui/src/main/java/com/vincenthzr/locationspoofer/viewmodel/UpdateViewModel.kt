@@ -171,10 +171,12 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
             _uiState.update { it.copy(error = "缺少 APK SHA-256，拒绝安装。") }
             return
         }
-        try {
-            updateManager.installApk(downloadId, digest)
-        } catch (error: Exception) {
-            _uiState.update { it.copy(error = error.message ?: "APK 完整性验证失败，已拒绝安装。") }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                updateManager.installApk(downloadId, digest)
+            } catch (error: Exception) {
+                _uiState.update { it.copy(error = error.message ?: "APK 完整性验证失败，已拒绝安装。") }
+            }
         }
     }
 

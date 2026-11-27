@@ -21,9 +21,17 @@ internal object EncryptedTokenStore {
         if (!stored.startsWith(PREFIX)) {
             // One-time plaintext migration. Do not fall back to plaintext if encryption fails.
             return try {
-                check(prefs.edit().putString(name, encrypt(stored)).commit())
-                stored
+                val encrypted = encrypt(stored)
+                if (prefs.edit().putString(name, encrypted).commit()) {
+                    stored
+                } else {
+                    // If migration cannot be committed, do not leave a plaintext credential at rest.
+                    prefs.edit().remove(name).commit()
+                    ""
+                }
             } catch (_: Exception) {
+                // Keystore unavailable / invalidated: fail closed and remove the legacy plaintext value.
+                prefs.edit().remove(name).commit()
                 ""
             }
         }
@@ -42,7 +50,11 @@ internal object EncryptedTokenStore {
         val encoded = try {
             encrypt(value)
         } catch (_: Exception) {
-            prefs.edit().remove(name).apply()
+            // Preserve a previously encrypted credential on transient Keystore errors.
+            // Never retain a legacy plaintext value when encryption is unavailable.
+            if (prefs.getString(name, null)?.startsWith(PREFIX) != true) {
+                prefs.edit().remove(name).apply()
+            }
             return
         }
         prefs.edit().putString(name, encoded).apply()
