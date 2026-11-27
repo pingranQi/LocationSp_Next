@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import java.util.concurrent.TimeUnit
 
 data class UpdateUiState(
     val isLoading: Boolean = false,
@@ -39,7 +40,9 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
     val uiState: StateFlow<UpdateUiState> = _uiState.asStateFlow()
 
     private val updateManager = UpdateManager(context)
-    private val okHttpClient = OkHttpClient()
+    private val okHttpClient = OkHttpClient.Builder()
+        .callTimeout(30, TimeUnit.SECONDS)
+        .build()
 
     fun fetchReleases() {
         _uiState.update { it.copy(isLoading = true, error = null) }
@@ -148,19 +151,23 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
             _uiState.update { it.copy(error = "Release 未提供有效 SHA-256，已拒绝安装该 APK。") }
             return
         }
-        val fileName = "LocationSpoofer_${versionName.replace(Regex("[^A-Za-z0-9._-]"), "_")}.apk"
-        val downloadId = updateManager.downloadApk(url, fileName)
-        _uiState.update {
-            it.copy(
-                activeDownloadId = downloadId,
-                activeDownloadUrl = url,
-                activeDownloadSha256 = digest,
-                error = null,
-                downloadProgress = 0,
-                downloadStatus = DownloadManager.STATUS_PENDING
-            )
+        try {
+            val fileName = "LocationSpoofer_${versionName.replace(Regex("[^A-Za-z0-9._-]"), "_")}.apk"
+            val downloadId = updateManager.downloadApk(url, fileName)
+            _uiState.update {
+                it.copy(
+                    activeDownloadId = downloadId,
+                    activeDownloadUrl = url,
+                    activeDownloadSha256 = digest,
+                    error = null,
+                    downloadProgress = 0,
+                    downloadStatus = DownloadManager.STATUS_PENDING
+                )
+            }
+            monitorDownload(downloadId)
+        } catch (error: Exception) {
+            _uiState.update { it.copy(error = error.message ?: "无法开始下载更新。") }
         }
-        monitorDownload(downloadId)
     }
 
     private fun monitorDownload(downloadId: Long) {
