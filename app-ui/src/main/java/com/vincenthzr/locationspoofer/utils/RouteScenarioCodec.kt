@@ -107,11 +107,11 @@ object RouteScenarioCodec {
         }
         require(scenario.customSpeedMs.isFinite() && scenario.customSpeedMs in 0.1..100.0) { "Custom speed is out of range" }
         require(scenario.stepCadenceSpm in 30..300) { "Step cadence is out of range" }
-        require(scenario.paceVariationSec in 0..600) { "Pace variation is out of range" }
+        require(scenario.paceVariationSec in 0..30) { "Pace variation is out of range" }
         require(scenario.fatigueLevel in 0..2) { "Fatigue level is out of range" }
-        require(scenario.firstKmBiasSec in -600..600) { "First kilometre bias is out of range" }
+        require(scenario.firstKmBiasSec in -30..0) { "First kilometre bias is out of range" }
         val fatigueStart = scenario.fatigueStartKm.toDoubleOrNull()
-        require(fatigueStart != null && fatigueStart.isFinite() && fatigueStart in 0.0..1000.0) {
+        require(fatigueStart != null && fatigueStart.isFinite() && fatigueStart in 0.0..42.0) {
             "Fatigue start distance is invalid"
         }
     }
