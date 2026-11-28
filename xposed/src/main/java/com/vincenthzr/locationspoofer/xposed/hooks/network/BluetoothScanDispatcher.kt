@@ -16,6 +16,10 @@
 
 package com.vincenthzr.locationspoofer.xposed.hooks.network
 
+private val bleScanReportDelayMillis = ConcurrentHashMap<Any, Long>()
+
+internal fun shouldBatchBleResults(reportDelayMillis: Long): Boolean = reportDelayMillis > 0L
+
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -23,6 +27,7 @@ import com.vincenthzr.locationspoofer.xposed.LocationHooker
 import com.vincenthzr.locationspoofer.xposed.utils.*
 import org.json.JSONObject
 import kotlin.random.Random
+import java.util.concurrent.ConcurrentHashMap
 import io.github.libxposed.api.*
 
 /**
@@ -54,6 +59,13 @@ internal fun LocationHooker.hookBluetoothLE(
                         XposedBridge.log("[LocationSpoofer] BluetoothLeScanner.$scanName 放行原生系统 (active/mock_bt 为 false)")
                         return@hookAllMethods chain.proceed(chain.args.toTypedArray())
                     }
+                    val reportDelayMillis = chain.args.firstOrNull {
+                        it?.javaClass?.name == "android.bluetooth.le.ScanSettings"
+                    }?.let { settings ->
+                        runCatching {
+                            (XposedHelpers.callMethod(settings, "getReportDelayMillis") as? Number)?.toLong()
+                        }.getOrNull()
+                    }?.coerceAtLeast(0L) ?: 0L
                     val callback = chain.args.firstOrNull { isScanCallback(it) }
                         ?: chain.args.lastOrNull {
                             it != null && it !is List<*> && it !is java.util.Collection<*> &&
@@ -67,7 +79,7 @@ internal fun LocationHooker.hookBluetoothLE(
                     if (callback != null && (method !is java.lang.reflect.Method ||
                             method.returnType != Int::class.javaPrimitiveType || result == 0)) {
                         XposedBridge.log("[LocationSpoofer] Native $scanName accepted; overlay synthetic results")
-                        startBleTimer(callback, classLoader)
+                        startBleTimer(callback, classLoader, reportDelayMillis)
                     } else if (callback == null) {
                         XposedBridge.log("[LocationSpoofer] $scanName callback not identified; native scan left untouched")
                     }
@@ -640,15 +652,6 @@ internal fun LocationHooker.deliverBleScanResults(
                 val scanResultObj = createScanResult(cl, device, scanRecord, rssi, timestampNanos)
                 if (scanResultObj != null) {
                     results.add(scanResultObj)
-                    mainHandler.post {
-                        if (!isCurrentScan()) return@post
-                        try {
-                            syntheticBleDelivery.withValue(true) { dispatchScanResultToCallback(callback, scanResultObj) }
-                            XposedBridge.log("[LocationSpoofer] 成功派发 onScanResult 给 ${callback.javaClass.name} | MAC=$address RSSI=$rssi 广播包长=${rawBytes.size}")
-                        } catch (e: Throwable) {
-                            XposedBridge.log("[LocationSpoofer] 派发 onScanResult 异常: $e")
-                        }
-                    }
                 } else {
                     XposedBridge.log("[LocationSpoofer] 创建 ScanResult 失败 address=$address")
                 }
@@ -657,18 +660,33 @@ internal fun LocationHooker.deliverBleScanResults(
             }
         }
         if (results.isNotEmpty()) {
+            val batchMode = shouldBatchBleResults(bleScanReportDelayMillis[callback] ?: 0L)
             mainHandler.post {
                 if (!isCurrentScan()) return@post
                 try {
-                    syntheticBleDelivery.withValue(true) { dispatchBatchResultsToCallback(callback, results) }
-                } catch (_: Throwable) {}
+                    syntheticBleDelivery.withValue(true) {
+                        if (batchMode) {
+                            dispatchBatchResultsToCallback(callback, results)
+                        } else {
+                            results.forEach { dispatchScanResultToCallback(callback, it) }
+                        }
+                    }
+                } catch (error: Throwable) {
+                    XposedBridge.log("[LocationSpoofer] Synthetic BLE callback dispatch failed: $error")
+                }
             }
         }
     }
 
 // 启动周期性定时广播模拟真实信标心跳 (约每 200ms 发送一次)
-internal fun LocationHooker.startBleTimer(callback: Any, cl: ClassLoader) {
+internal fun LocationHooker.startBleTimer(
+    callback: Any,
+    cl: ClassLoader,
+    reportDelayMillis: Long = 0L
+) {
         bleScanTimers.remove(callback)?.cancel()
+        val safeReportDelay = reportDelayMillis.coerceAtLeast(0L)
+        bleScanReportDelayMillis[callback] = safeReportDelay
         val timer = java.util.Timer("LocationSpoofer-BleTimer", true)
         bleScanTimers[callback] = timer
         val isCurrentScan = { bleScanTimers[callback] === timer }
@@ -679,6 +697,7 @@ internal fun LocationHooker.startBleTimer(callback: Any, cl: ClassLoader) {
             deliverBleScanResults(config, callback, cl, isCurrentScan)
         }
 
+        val intervalMillis = if (safeReportDelay > 0L) safeReportDelay.coerceAtLeast(200L) else 200L
         timer.schedule(object : java.util.TimerTask() {
             override fun run() {
                 if (!isCurrentScan()) {
@@ -688,16 +707,19 @@ internal fun LocationHooker.startBleTimer(callback: Any, cl: ClassLoader) {
                 val cfg = readConfig()
                 if (cfg == null || !cfg.optBoolean("active", false) || !cfg.optBoolean("mock_bluetooth", true)) {
                     cancel()
-                    bleScanTimers.remove(callback, timer)
+                    if (bleScanTimers.remove(callback, timer)) {
+                        bleScanReportDelayMillis.remove(callback)
+                    }
                     return
                 }
                 deliverBleScanResults(cfg, callback, cl, isCurrentScan)
             }
-        }, 200L, 200L)
+        }, intervalMillis, intervalMillis)
     }
 
 internal fun LocationHooker.stopBleTimer(callback: Any) {
         bleScanTimers.remove(callback)?.cancel()
+        bleScanReportDelayMillis.remove(callback)
     }
 
 internal fun LocationHooker.deliverOldLeScanResults(
@@ -736,6 +758,7 @@ internal fun LocationHooker.deliverOldLeScanResults(
 
 internal fun LocationHooker.startOldLeScanTimer(callback: Any, cl: ClassLoader) {
         bleScanTimers.remove(callback)?.cancel()
+        bleScanReportDelayMillis.remove(callback)
         val timer = java.util.Timer("LocationSpoofer-OldBleTimer", true)
         bleScanTimers[callback] = timer
         val isCurrentScan = { bleScanTimers[callback] === timer }
