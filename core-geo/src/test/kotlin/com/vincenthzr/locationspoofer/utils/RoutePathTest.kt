@@ -64,6 +64,19 @@ class RoutePathTest {
     }
 
     @Test
+    fun `interpolates along a great-circle arc at high latitudes`() {
+        val start = LatLng(70.0, 10.0)
+        val end = GeoMath.destination(start, 90.0, 100_000.0)
+        val path = RoutePath(listOf(start, end))
+        val midpoint = path.positionAt(path.totalDistance / 2.0, stopAtDestination = false)
+
+        assertTrue(midpoint.lat > start.lat)
+        assertEquals(path.totalDistance / 2.0,
+            GeoMath.distance(start, LatLng(midpoint.lat, midpoint.lng)), 0.5)
+        assertEquals(90.0, midpoint.bearing.toDouble(), 0.5)
+    }
+
+    @Test
     fun `destination normalizes longitude after crossing antimeridian`() {
         val start = LatLng(0.0, 179.9)
         val destination = GeoMath.destination(start, 90.0, 30_000.0)
