@@ -17,6 +17,11 @@ object RouteSimplifier {
         val keep = BooleanArray(points.size)
         keep[0] = true
         keep[points.lastIndex] = true
+        points.forEachIndexed { index, point ->
+            if (point.waitSec > 0.0 || point.elevationMeters != null || point.timestampEpochMillis != null) {
+                keep[index] = true
+            }
+        }
         val stack = ArrayDeque<Pair<Int, Int>>()
         stack.addLast(0 to points.lastIndex)
 
