@@ -32,7 +32,7 @@ License status is a preliminary repository-level review, not legal advice. Befor
 
 - [x] Pure-Kotlin parser for decimal coordinate pairs, geo: URIs, Google Maps @lat,lng links, !3d/!4d links, and common coordinate query parameters.
 - [x] Reject non-finite and out-of-range coordinates; preserve input values without guessing a datum conversion.
-- [x] Wire parser into the coordinate-entry UI with a clipboard paste action and localized feedback. A coordinate-system selector remains required before any automatic datum conversion.
+- [x] Wire parser into the coordinate-entry UI with clipboard paste, a WGS84/GCJ02/BD09 source-datum selector, explicit conversion to WGS84, and localized feedback.
 - [x] Add a bounded, XXE-safe GPX 1.0/1.1 codec with segment, timestamp, elevation, route and waypoint preservation plus round-trip tests.
 - [x] Add GPX file import to the route library and per-route GPX export using Android document picker APIs. Track segments are imported as separate saved routes to avoid joining disconnected segments; route point elevation and timestamps are preserved in the internal model and GPX export.
 - [ ] Add versioned JSON backup migration tests, partial-import preview, and atomic restore/rollback.
@@ -62,9 +62,9 @@ This integration does not add stealth, mock-indicator removal, third-party app a
 
 - CoordinateInputParser.kt: independent, pure-Kotlin parser for common coordinate text and map links.
 - CoordinateInputParserTest.kt: parser regression tests for supported formats, malformed input, and range validation.
-- RouteScenarioCodecTest.kt: scenario round-trip, version rejection, coordinate/dwell/config validation, and route metadata preservation.
+- RouteScenarioCodecTest.kt: scenario round-trip, version rejection, coordinate/dwell/config validation, route metadata preservation, and GCJ-02 to WGS-84 normalization.
 - RouteSimplifierTest.kt: 5 m simplification, bend retention, and preservation of semantically important waypoints.
-- CoordinateInputCard.kt: clipboard import action with localized English, Chinese, and Arabic feedback.
+- CoordinateInputCard.kt: clipboard import action with localized English, Chinese, and Arabic feedback, including an explicit WGS84/GCJ02/BD09 source selector and WGS84 normalization.
 - RoutePointEditorDialog.kt, RouteSimplifier.kt, MainViewModelRoute.kt, SettingsManager.kt, and SettingsRepository.kt: bounded undo/redo, waypoint deletion/reordering, 5-second dwell controls, 5 m Douglas–Peucker simplification preserving dwell/elevation/timestamp points, and local draft autosave/restore with a 5 MiB cap.
 - RouteBottomPanel.kt, MotionController.kt, RoutePath.kt, and Xposed RouteEngine.kt: pause/resume, seek-to-progress, deterministic distance offsets, playback progress, and synchronized waypoint dwell timing.
 - RouteScenarioCodec.kt and SavedRoutesDialog.kt: versioned route scenario import/export, including route geometry, waypoint dwell/elevation/timestamps, speed/run modes, destination behavior, cadence, pace/fatigue, mock-environment toggles, jitter, altitude, and satellite settings.
