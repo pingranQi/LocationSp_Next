@@ -95,8 +95,12 @@ class MotionController(
         val recordedPointCount: Int = 0,
         val recordedDistanceM: Double = 0.0,
         /** 录制已结束、等待命名保存的路线 */
-        val hasPendingRecording: Boolean = false
+        val hasPendingRecording: Boolean = false,
+        val distanceTraveledM: Double = 0.0,
+        val routeCycleDistanceM: Double = 0.0
     ) {
+        val playbackProgress: Float
+            get() = if (routeCycleDistanceM <= 0.0) 0f else ((distanceTraveledM % routeCycleDistanceM) / routeCycleDistanceM).toFloat().coerceIn(0f, 1f)
         val active: Boolean get() = mode != Mode.IDLE
         /** 路线自动播放或走回暂停点期间，摇杆不响应 */
         val joystickEnabled: Boolean get() = active && mode != Mode.ROUTE && !returning
@@ -194,7 +198,9 @@ class MotionController(
                 hasRoute = true,
                 paused = startPaused,
                 returning = false,
-                preset = preset
+                preset = preset,
+                distanceTraveledM = 0.0,
+                routeCycleDistanceM = if (stopAtDestination || routePath.isClosedLoop) routePath.totalDistance else routePath.totalDistance * 2.0
             )
         }
         invalidateProfile()
@@ -211,7 +217,7 @@ class MotionController(
         joyIntensity = 0f
         pendingWrite = null
         if (_state.value.recording) finishRecording()
-        _state.update { it.copy(mode = Mode.IDLE, speedMs = 0.0, hasRoute = false, paused = false, returning = false) }
+        _state.update { it.copy(mode = Mode.IDLE, speedMs = 0.0, hasRoute = false, paused = false, returning = false, distanceTraveledM = 0.0, routeCycleDistanceM = 0.0) }
         tickJob?.cancel()
         tickJob = null
     }
@@ -251,8 +257,56 @@ class MotionController(
         pauseDistance = traveled
         pausePoint = LatLng(pos.lat, pos.lng)
         joyIntensity = 0f
-        _state.update { it.copy(mode = Mode.MANUAL, lat = pos.lat, lng = pos.lng, bearing = pos.bearing, speedMs = 0.0, paused = true) }
+        _state.update { it.copy(mode = Mode.MANUAL, lat = pos.lat, lng = pos.lng, bearing = pos.bearing, speedMs = 0.0, paused = true, distanceTraveledM = traveled) }
         requestManualWrite(pos.lat, pos.lng, pos.bearing, 0.0, now)
+    }
+
+    /** Seek along the active route. Progress is measured over one loop (or one out-and-back cycle). */
+    fun seekToProgress(progress: Float) {
+        if (!progress.isFinite()) return
+        val routePath = path ?: return
+        val state = _state.value
+        if (!state.hasRoute) return
+        val cycleDistance = if (stopAtDestination || routePath.isClosedLoop) {
+            routePath.totalDistance
+        } else {
+            routePath.totalDistance * 2.0
+        }
+        val distance = progress.coerceIn(0f, 1f).toDouble() * cycleDistance
+        val now = clock()
+        val position = routePath.positionAt(distance, stopAtDestination)
+        routeOffset = distance
+        routeStartTs = now
+        pauseDistance = distance
+        val point = LatLng(position.lat, position.lng)
+        if (state.paused) {
+            pausePoint = point
+            _state.update {
+                it.copy(
+                    lat = point.lat,
+                    lng = point.lng,
+                    bearing = position.bearing,
+                    speedMs = 0.0,
+                    distanceTraveledM = distance
+                )
+            }
+            requestManualWrite(point.lat, point.lng, position.bearing, 0.0, now)
+        } else {
+            _state.update {
+                it.copy(
+                    mode = Mode.ROUTE,
+                    lat = point.lat,
+                    lng = point.lng,
+                    bearing = position.bearing,
+                    speedMs = 0.0,
+                    paused = false,
+                    returning = false,
+                    distanceTraveledM = distance
+                )
+            }
+            pausePoint = null
+            requestRouteWrite(now)
+        }
     }
 
     /** 继续原路线：离暂停点较远时先自动走回去，全程不瞬移 */
@@ -393,7 +447,7 @@ class MotionController(
                 val traveled = traveledAt(now)
                 val pos = routePath.positionAt(traveled, stopAtDestination)
                 val speed = if (pos.arrived) 0.0 else profile.speedAt(profile.elapsedAt(traveled))
-                _state.update { it.copy(lat = pos.lat, lng = pos.lng, bearing = pos.bearing, speedMs = speed) }
+                _state.update { it.copy(lat = pos.lat, lng = pos.lng, bearing = pos.bearing, speedMs = speed, distanceTraveledM = traveled) }
             }
 
             s.returning -> {
@@ -402,7 +456,7 @@ class MotionController(
                 val remaining = GeoMath.distance(here, target)
                 val step = s.preset.speedMs * dt
                 if (remaining <= maxOf(step, 1.0)) {
-                    _state.update { it.copy(lat = target.lat, lng = target.lng) }
+                    _state.update { it.copy(lat = target.lat, lng = target.lng, distanceTraveledM = pauseDistance) }
                     resumeRoute(now)
                 } else {
                     val bearing = GeoMath.bearing(here, target)
