@@ -742,4 +742,8 @@
     <string name="route_waypoint_wait">停留：%1$d 秒</string>
     <string name="reduce_wait">减少停留时间</string>
     <string name="increase_wait">增加停留时间</string>
+    <string name="route_diag_paused">已暂停</string>
+    <string name="route_diag_playing">播放中</string>
+    <string name="route_diag_available">可用</string>
+    <string name="route_diag_unavailable">不可用</string>
 </resources>
