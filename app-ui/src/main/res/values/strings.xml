@@ -739,4 +739,7 @@ Error details: %s</string>
     <string name="route_diag_enabled">Enabled</string>
     <string name="route_diag_disabled">Disabled</string>
     <string name="route_playback_progress">Playback progress</string>
+    <string name="route_waypoint_wait">Stop: %1$d sec</string>
+    <string name="reduce_wait">Reduce stop duration</string>
+    <string name="increase_wait">Increase stop duration</string>
 </resources>
