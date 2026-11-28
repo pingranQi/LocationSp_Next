@@ -527,4 +527,9 @@
     <string name="remove_waypoint">إزالة نقطة</string>
     <string name="route_pause">إيقاف مؤقت</string>
     <string name="route_resume">استئناف</string>
+    <string name="scenario_import">استيراد سيناريو</string>
+    <string name="scenario_export">تصدير سيناريو</string>
+    <string name="scenario_import_success">تم استيراد السيناريو وحفظه في مكتبة المسارات</string>
+    <string name="scenario_export_success">تم تصدير السيناريو</string>
+    <string name="scenario_operation_failed">فشلت عملية السيناريو. تحقق من تنسيق الملف ومحتوياته.</string>
 </resources>
