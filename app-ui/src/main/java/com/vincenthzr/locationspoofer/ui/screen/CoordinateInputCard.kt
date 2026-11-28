@@ -34,6 +34,7 @@ import com.vincenthzr.locationspoofer.viewmodel.clearPinnedCollectedLocation
 import com.vincenthzr.locationspoofer.viewmodel.updateLatitude
 import com.vincenthzr.locationspoofer.viewmodel.updateLongitude
 import com.vincenthzr.locationspoofer.utils.CoordinateInputParser
+import com.vincenthzr.locationspoofer.utils.CoordinateUtils
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 
 
@@ -48,6 +49,8 @@ fun CoordinateInputCard(
 ) {
     val textSecondary = AppColors.textSecondary(isDark)
     val context = LocalContext.current
+    var pasteCoordinateSystem by remember { mutableStateOf(PasteCoordinateSystem.WGS84) }
+    var datumMenuExpanded by remember { mutableStateOf(false) }
 
     MiuixCard(
         modifier = Modifier.fillMaxWidth(),
@@ -62,6 +65,29 @@ fun CoordinateInputCard(
                     isDark
                 )
                 Spacer(Modifier.weight(1f))
+                Box {
+                    TextButton(onClick = { datumMenuExpanded = true }) {
+                        Text(
+                            stringResource(R.string.coordinate_input_datum) + ": " + pasteCoordinateSystem.name,
+                            fontSize = 11.sp,
+                            color = AccentBlue
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = datumMenuExpanded,
+                        onDismissRequest = { datumMenuExpanded = false }
+                    ) {
+                        PasteCoordinateSystem.entries.forEach { system ->
+                            DropdownMenuItem(
+                                text = { Text(system.name) },
+                                onClick = {
+                                    pasteCoordinateSystem = system
+                                    datumMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
                 IconButton(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
@@ -72,8 +98,16 @@ fun CoordinateInputCard(
                             ?.toString()
                         val parsed = pastedText?.let(CoordinateInputParser::parse)
                         if (parsed != null) {
-                            viewModel.updateLatitude(parsed.latitude.toString())
-                            viewModel.updateLongitude(parsed.longitude.toString())
+                            val wgs84 = when (pasteCoordinateSystem) {
+                                PasteCoordinateSystem.WGS84 -> CoordinateUtils.LatLng(parsed.latitude, parsed.longitude)
+                                PasteCoordinateSystem.GCJ02 -> CoordinateUtils.gcj02ToWgs84(parsed.latitude, parsed.longitude)
+                                PasteCoordinateSystem.BD09 -> {
+                                    val gcj02 = CoordinateUtils.bd09ToGcj02(parsed.latitude, parsed.longitude)
+                                    CoordinateUtils.gcj02ToWgs84(gcj02.lat, gcj02.lng)
+                                }
+                            }
+                            viewModel.updateLatitude(wgs84.lat.toString())
+                            viewModel.updateLongitude(wgs84.lng.toString())
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.coordinate_paste_success),
@@ -254,6 +288,8 @@ fun CoordinateInputCard(
         }
     }
 }
+
+private enum class PasteCoordinateSystem { WGS84, GCJ02, BD09 }
 
 @Composable
 fun coordinateFieldColors() = OutlinedTextFieldDefaults.colors(
