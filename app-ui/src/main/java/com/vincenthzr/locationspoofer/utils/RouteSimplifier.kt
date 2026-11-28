@@ -51,7 +51,8 @@ object RouteSimplifier {
             }
             val elevation = point.elevationMeters
             require(elevation == null || elevation.isFinite()) { "Waypoint elevation is invalid" }
-            require(point.timestampEpochMillis == null || point.timestampEpochMillis >= 0L) {
+            val timestamp = point.timestampEpochMillis
+            require(timestamp == null || timestamp >= 0L) {
                 "Waypoint timestamp is invalid"
             }
         }
