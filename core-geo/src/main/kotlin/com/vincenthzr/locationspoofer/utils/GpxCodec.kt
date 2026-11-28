@@ -126,6 +126,7 @@ object GpxCodec {
         require(segments.isNotEmpty() && segments.any { it.isNotEmpty() }) {
             "At least one track point is required"
         }
+        require(name.length <= 256) { "Track name is too long" }
         val count = segments.sumOf { it.size }
         require(count <= MAX_POINTS) { "Track contains more than $MAX_POINTS points" }
         segments.flatten().forEach {
@@ -134,7 +135,7 @@ object GpxCodec {
             require(it.elevationMeters == null || it.elevationMeters.isFinite()) { "Elevation is invalid" }
         }
 
-        return buildString {
+        val xml = buildString {
             append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
             append("<gpx version=\"1.1\" creator=\"LocationSp_Next\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n")
             append("  <trk>\n")
@@ -154,6 +155,10 @@ object GpxCodec {
             }
             append("  </trk>\n</gpx>\n")
         }
+        require(xml.toByteArray(StandardCharsets.UTF_8).size <= MAX_DOCUMENT_BYTES) {
+            "Generated GPX document exceeds the 10 MiB limit"
+        }
+        return xml
     }
 
     private fun escape(value: String): String = value
