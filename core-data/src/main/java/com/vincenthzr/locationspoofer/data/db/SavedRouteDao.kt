@@ -18,6 +18,10 @@ interface SavedRouteDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSavedRoute(route: SavedRouteEntity)
 
+    /** Inserts a complete import batch in one Room transaction. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSavedRoutes(routes: List<SavedRouteEntity>): List<Long>
+
     @Delete
     suspend fun deleteSavedRoute(route: SavedRouteEntity)
 }
