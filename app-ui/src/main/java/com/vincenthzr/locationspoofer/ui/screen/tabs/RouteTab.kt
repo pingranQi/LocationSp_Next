@@ -535,6 +535,8 @@ fun RouteTab(
                     isPlaybackPaused = motionState.paused,
                     onPausePlayback = { viewModel.motionController.pause() },
                     onResumePlayback = { viewModel.motionController.resume() },
+                    playbackProgress = motionState.playbackProgress,
+                    onSeekPlayback = { viewModel.motionController.seekToProgress(it) },
                     searchBar = if (stage == RoutePlanStage.IDLE || stage == RoutePlanStage.SELECTING) {
                         { barModifier ->
                             if (!searchActive) {
