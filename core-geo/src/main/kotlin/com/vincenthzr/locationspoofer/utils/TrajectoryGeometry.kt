@@ -24,6 +24,11 @@ object TrajectoryGeometry {
         points: List<TrajectoryPoint>,
         thresholdM: Double = DEFAULT_CLOSE_THRESHOLD_M
     ): List<TrajectoryPoint> {
+        require(thresholdM.isFinite() && thresholdM >= 0.0) { "loop threshold must be finite and non-negative" }
+        require(points.all { point ->
+            point.lat.isFinite() && point.lng.isFinite() && point.tOffsetSec.isFinite() &&
+                point.lat in -90.0..90.0 && point.lng in -180.0..180.0 && point.tOffsetSec >= 0.0
+        }) { "loop points must contain finite, in-range coordinates and timestamps" }
         if (points.size < 3) return points
         val first = points.first()
         val last = points.last()
@@ -69,8 +74,14 @@ object TrajectoryGeometry {
         while (k > 0 && n < window) {
             val a = points[k - 1]
             val b = points[k]
-            val dx = (b.lng - a.lng) * 111320.0 * kotlin.math.cos(Math.toRadians(b.lat))
-            val dy = b.lat - a.lat
+            require(
+                a.lat.isFinite() && a.lng.isFinite() && b.lat.isFinite() && b.lng.isFinite() &&
+                    a.lat in -90.0..90.0 && b.lat in -90.0..90.0 &&
+                    a.lng in -180.0..180.0 && b.lng in -180.0..180.0
+            ) { "heading points must contain finite, in-range coordinates" }
+            val dLng = ((b.lng - a.lng + 540.0) % 360.0) - 180.0
+            val dx = dLng * 111320.0 * kotlin.math.cos(Math.toRadians(b.lat))
+            val dy = (b.lat - a.lat) * 111320.0
             if (abs(dx) > 0.01 || abs(dy) > 0.01) {
                 sx += dx
                 sy += dy
@@ -99,6 +110,11 @@ object TrajectoryGeometry {
         lengthM: Double = DEFAULT_ARROW_LENGTH_M,
         spreadDeg: Double = DEFAULT_ARROW_SPREAD_DEG
     ): Pair<List<Pair<Double, Double>>, List<Pair<Double, Double>>> {
+        require(centerLat.isFinite() && centerLat in -90.0..90.0) { "arrow latitude must be finite and in range" }
+        require(centerLng.isFinite() && centerLng in -180.0..180.0) { "arrow longitude must be finite and in range" }
+        require(headingDeg.isFinite()) { "arrow heading must be finite" }
+        require(lengthM.isFinite() && lengthM >= 0.0) { "arrow length must be finite and non-negative" }
+        require(spreadDeg.isFinite() && spreadDeg in 0.0..180.0) { "arrow spread must be between 0 and 180 degrees" }
         val half = spreadDeg / 2.0
         val left = destinationFrom(centerLat, centerLng, headingDeg - half, lengthM)
         val right = destinationFrom(centerLat, centerLng, headingDeg + half, lengthM)
@@ -118,7 +134,7 @@ object TrajectoryGeometry {
     }
 
     /** 起终点接近多少米内视为“在附近”，触发闭合 */
-    const val DEFAULT_CLOSE_THRESHOLD_M = 15.0
+    const val DEFAULT_CLOSE_THRESHOLD_M = 5.0
 
     /** 箭头长度（米） */
     const val DEFAULT_ARROW_LENGTH_M = 2.0

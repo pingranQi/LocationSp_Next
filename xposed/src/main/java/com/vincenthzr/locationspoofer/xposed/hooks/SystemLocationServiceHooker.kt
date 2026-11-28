@@ -94,6 +94,35 @@ private val activeCallbackBinders = ConcurrentHashMap<IBinder, CallbackRegistrat
 
 // 存储当前活跃的目标应用 PendingIntent 映射
 private val activePendingIntents = ConcurrentHashMap<android.app.PendingIntent, String>()
+private val pendingIntentRegisteredAt = ConcurrentHashMap<android.app.PendingIntent, Long>()
+private const val PENDING_INTENT_TTL_MS = 24L * 60L * 60L * 1000L
+private const val MAX_PENDING_INTENT_REGISTRATIONS = 512
+
+private fun trackPendingIntent(
+    pendingIntent: android.app.PendingIntent,
+    packageName: String,
+    registeredAt: Long = System.currentTimeMillis()
+) {
+    val now = System.currentTimeMillis()
+    pendingIntentRegisteredAt.entries.removeIf { now - it.value > PENDING_INTENT_TTL_MS }
+    activePendingIntents.keys.removeIf { it !in pendingIntentRegisteredAt.keys }
+    // Do not resurrect a registration that expired while the Xposed module was being reloaded.
+    if (now - registeredAt > PENDING_INTENT_TTL_MS) return
+    if (activePendingIntents.size >= MAX_PENDING_INTENT_REGISTRATIONS && !activePendingIntents.containsKey(pendingIntent)) {
+        val oldest = pendingIntentRegisteredAt.minByOrNull { it.value }?.key
+        if (oldest != null) {
+            pendingIntentRegisteredAt.remove(oldest)
+            activePendingIntents.remove(oldest)
+        }
+    }
+    activePendingIntents[pendingIntent] = packageName
+    pendingIntentRegisteredAt[pendingIntent] = registeredAt
+}
+
+private fun removePendingIntent(pendingIntent: android.app.PendingIntent) {
+    activePendingIntents.remove(pendingIntent)
+    pendingIntentRegisteredAt.remove(pendingIntent)
+}
 
 @Volatile
 private var isHeartbeatTimerStarted = false
@@ -113,7 +142,11 @@ internal fun saveSystemLocationReloadState(): Array<Any> = arrayOf(
         arrayOf<Any>(binder, info.callback, info.packageName, info.registeredTime)
     },
     activePendingIntents.mapTo(java.util.ArrayList()) { (pendingIntent, packageName) ->
-        arrayOf<Any>(pendingIntent, packageName)
+        arrayOf<Any>(
+            pendingIntent,
+            packageName,
+            pendingIntentRegisteredAt[pendingIntent] ?: System.currentTimeMillis()
+        )
     }
 )
 
@@ -124,6 +157,7 @@ internal fun clearSystemLocationReloadState() {
     activeGnssNmeaBinders.clear()
     activeCallbackBinders.clear()
     activePendingIntents.clear()
+    pendingIntentRegisteredAt.clear()
     spoofedListenerInstances.clear()
 }
 
@@ -137,19 +171,19 @@ internal fun LocationHooker.restoreSystemLocationReloadState(value: Any?) {
         activeListenerBinders[binder] = ListenerRegistrationInfo(listener, row[2] as String, row[3] as String, row[4] as Long)
         spoofedListenerInstances.add(listener)
         ensureCallbackHooked(listener, "onLocationChanged")
-        runCatching { ModuleBinderDeaths.watch(binder) { activeListenerBinders.remove(binder) } }
+        runCatching { ModuleBinderDeaths.watch(binder, "location-listener") { activeListenerBinders.remove(binder) } }
     }
     rows(1).forEach { row ->
         val binder = row[0] as IBinder
         if (!binder.isBinderAlive) return@forEach
         activeGnssStatusBinders[binder] = GnssStatusRegistrationInfo(row[1]!!, row[2] as String, row[3] as Long)
-        runCatching { ModuleBinderDeaths.watch(binder) { activeGnssStatusBinders.remove(binder) } }
+        runCatching { ModuleBinderDeaths.watch(binder, "gnss-status") { activeGnssStatusBinders.remove(binder) } }
     }
     rows(2).forEach { row ->
         val binder = row[0] as IBinder
         if (!binder.isBinderAlive) return@forEach
         activeGnssNmeaBinders[binder] = GnssNmeaRegistrationInfo(row[1]!!, row[2] as String, row[3] as Long)
-        runCatching { ModuleBinderDeaths.watch(binder) { activeGnssNmeaBinders.remove(binder) } }
+        runCatching { ModuleBinderDeaths.watch(binder, "gnss-nmea") { activeGnssNmeaBinders.remove(binder) } }
     }
     rows(3).forEach { row ->
         val binder = row[0] as IBinder
@@ -158,9 +192,13 @@ internal fun LocationHooker.restoreSystemLocationReloadState(value: Any?) {
         activeCallbackBinders[binder] = CallbackRegistrationInfo(callback, row[2] as String, row[3] as Long)
         spoofedListenerInstances.add(callback)
         ensureCallbackHooked(callback, "onLocation")
-        runCatching { ModuleBinderDeaths.watch(binder) { activeCallbackBinders.remove(binder) } }
+        runCatching { ModuleBinderDeaths.watch(binder, "location-callback") { activeCallbackBinders.remove(binder) } }
     }
-    rows(4).forEach { row -> activePendingIntents[row[0] as android.app.PendingIntent] = row[1] as String }
+    rows(4).forEach { row ->
+        val pendingIntent = row[0] as android.app.PendingIntent
+        val registeredAt = row.getOrNull(2) as? Long ?: System.currentTimeMillis()
+        trackPendingIntent(pendingIntent, row[1] as String, registeredAt)
+    }
 }
 
 /** 在 args 里递归找出所有 android.location.Location（单个、List、或 LocationResult 形态）并就地改写 */
@@ -205,6 +243,9 @@ private fun rewriteLocationArgs(
     }
 }
 
+internal fun shouldReleaseOneShotLocationCallback(methodName: String, isOneShotRegistration: Boolean): Boolean =
+    methodName == "onLocation" && isOneShotRegistration
+
 /** 找到目标监听者/回调对象类之后，Hook 一次，按实例身份决定要不要改写投递内容 */
 private fun LocationHooker.ensureCallbackHooked(callback: Any, vararg deliveryMethodNames: String) {
     val clazz = callback.javaClass
@@ -212,26 +253,44 @@ private fun LocationHooker.ensureCallbackHooked(callback: Any, vararg deliveryMe
     for (methodName in deliveryMethodNames) {
         try {
             XposedHelpers.hookAllMethods(clazz, methodName) { innerChain, _ ->
-                val binder = (innerChain.thisObject as? IInterface)?.asBinder() ?: (innerChain.thisObject as? IBinder)
-                val config = readConfig()
-                val isGlobal = config?.optBoolean("system_hook_global_mode", false) == true
-                val isTracked = (binder != null && (activeListenerBinders.containsKey(binder) || activeCallbackBinders.containsKey(binder))) ||
-                        spoofedListenerInstances.contains(innerChain.thisObject)
-                val isTarget = isTracked || isGlobal
-                if (isTarget && config != null && config.optBoolean("active", false)) {
-                    val motion = getCurrentSpoofedMotion("WGS-84")
-                    if (motion != null) {
-                        rewriteLocationArgs(
-                            innerChain.args,
-                            motion,
-                            RouteEngine.realisticAltitude(config),
-                            getJitteredAccuracy()
-                        )
-                        logLoc("[SysLoc] Rewrote location in callback $methodName for target binder (lat=${motion.lat}, lng=${motion.lng}, isGlobal=$isGlobal)"
-                        )
+                val callbackInstance = innerChain.thisObject
+                val binder = (callbackInstance as? IInterface)?.asBinder() ?: (callbackInstance as? IBinder)
+                // Only getCurrentLocation's ILocationCallback is one-shot.
+                // ILocationListener also delivers onLocation repeatedly and must remain tracked.
+                val oneShot = shouldReleaseOneShotLocationCallback(
+                    methodName,
+                    binder != null && activeCallbackBinders.containsKey(binder)
+                )
+                try {
+                    val config = readConfig()
+                    val isGlobal = config?.optBoolean("system_hook_global_mode", false) == true
+                    val isTracked = (binder != null && (activeListenerBinders.containsKey(binder) || activeCallbackBinders.containsKey(binder))) ||
+                            spoofedListenerInstances.contains(callbackInstance)
+                    // Global mode registrations are admitted by isTargetCaller() at the Binder entry point.
+                    // hookAllMethods covers every instance of this class, so class-wide global bypass is unsafe.
+                    val isTarget = isTracked
+                    if (isTarget && config != null && config.optBoolean("active", false)) {
+                        val motion = getCurrentSpoofedMotion("WGS-84")
+                        if (motion != null) {
+                            rewriteLocationArgs(
+                                innerChain.args,
+                                motion,
+                                RouteEngine.realisticAltitude(config),
+                                getJitteredAccuracy()
+                            )
+                            logLoc("[SysLoc] Rewrote location in callback $methodName for target binder (lat=${motion.lat}, lng=${motion.lng}, isGlobal=$isGlobal)")
+                        }
+                    }
+                    return@hookAllMethods innerChain.proceed(innerChain.args.toTypedArray())
+                } finally {
+                    if (oneShot) {
+                        if (binder != null) {
+                            activeCallbackBinders.remove(binder)
+                            ModuleBinderDeaths.unwatch(binder, "location-callback")
+                        }
+                        spoofedListenerInstances.remove(callbackInstance)
                     }
                 }
-                return@hookAllMethods innerChain.proceed(innerChain.args.toTypedArray())
             }
         } catch (_: Throwable) {}
     }
@@ -491,6 +550,55 @@ private fun LocationHooker.buildMockNmeaSentences(
     return sentences
 }
 
+/** Queue the registration-time first fix outside the incoming system-server Binder transaction. */
+private val initialLocationDispatchHandler by lazy {
+    android.os.Handler(android.os.Looper.getMainLooper())
+}
+
+private fun dispatchFakeLocationAsync(listener: Any, fakeLoc: Any) {
+    initialLocationDispatchHandler.post {
+        val binder = (listener as? IInterface)?.asBinder() ?: (listener as? IBinder)
+        val stillRegistered = if (binder != null) {
+            activeListenerBinders.containsKey(binder) || activeCallbackBinders.containsKey(binder)
+        } else {
+            spoofedListenerInstances.contains(listener)
+        }
+        if (!stillRegistered || binder?.isBinderAlive == false) return@post
+        try {
+            dispatchFakeLocationToListener(listener, fakeLoc)
+        } catch (error: Throwable) {
+            logLoc("[SysLoc] asynchronous first-fix dispatch failed: $error")
+        }
+    }
+}
+
+/** Queue a one-shot ILocationCallback delivery and release its Binder registration afterwards. */
+private fun dispatchCurrentLocationCallbackAsync(callback: Any, fakeLoc: Any): Boolean {
+    val binder = (callback as? IInterface)?.asBinder() ?: (callback as? IBinder)
+    val method = callback.javaClass.methods.firstOrNull {
+        it.name == "onLocation" && it.parameterTypes.size == 1
+    } ?: return false
+    return initialLocationDispatchHandler.post {
+        val stillRegistered = if (binder != null) {
+            activeCallbackBinders.containsKey(binder)
+        } else {
+            spoofedListenerInstances.contains(callback)
+        }
+        if (!stillRegistered || binder?.isBinderAlive == false) return@post
+        try {
+            method.invoke(callback, fakeLoc)
+        } catch (error: Throwable) {
+            logLoc("[SysLoc] asynchronous getCurrentLocation callback failed: ${error.cause ?: error}")
+        } finally {
+            if (binder != null) {
+                activeCallbackBinders.remove(binder)
+                ModuleBinderDeaths.unwatch(binder, "location-callback")
+            }
+            spoofedListenerInstances.remove(callback)
+        }
+    }
+}
+
 /** 向 ILocationListener 代理对象主动反射调用 onLocationChanged */
 private fun dispatchFakeLocationToListener(listener: Any, fakeLoc: Any) {
     val clazz = listener.javaClass
@@ -636,7 +744,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                         provider = provider
                                     )
                                     try {
-                                        ModuleBinderDeaths.watch(binder) {
+                                        ModuleBinderDeaths.watch(binder, "location-listener") {
                                             activeListenerBinders.remove(binder)
                                             logLoc("[SysHook] Listener died and removed for $pkgName")
                                         }
@@ -661,8 +769,8 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                     )
                                     if (fakeLoc != null) {
                                         try {
-                                            dispatchFakeLocationToListener(listener, fakeLoc)
-                                            logLoc("[SysHook] Proactively dispatched instant fake location to listener for ${explicitPkg ?: "caller"} (provider=$provider)"
+                                            dispatchFakeLocationAsync(listener, fakeLoc)
+                                            logLoc("[SysHook] Queued instant fake location for listener for ${explicitPkg ?: "caller"} (provider=$provider)"
                                             )
                                         } catch (t: Throwable) {
                                             logLoc("[SysHook] instant proactive dispatch failed: $t")
@@ -674,7 +782,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                             val pendingIntent = chain.args.firstOrNull { it is android.app.PendingIntent } as? android.app.PendingIntent
                             if (pendingIntent != null) {
                                 val pkgName = explicitPkg ?: pendingIntent.creatorPackage ?: "unknown"
-                                activePendingIntents[pendingIntent] = pkgName
+                                trackPendingIntent(pendingIntent, pkgName)
                                 logLoc("[SysHook] Registered target location PendingIntent for $pkgName (total active: ${activePendingIntents.size})")
                             }
                         }
@@ -708,12 +816,13 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                         val binder = (listener as? IInterface)?.asBinder() ?: (listener as? IBinder)
                         if (binder != null) {
                             activeListenerBinders.remove(binder)
+                            ModuleBinderDeaths.unwatch(binder, "location-listener")
                         }
                         spoofedListenerInstances.remove(listener)
                     }
                     val pendingIntent = chain.args.firstOrNull { it is android.app.PendingIntent } as? android.app.PendingIntent
                     if (pendingIntent != null) {
-                        activePendingIntents.remove(pendingIntent)
+                        removePendingIntent(pendingIntent)
                     }
                 } catch (_: Throwable) {}
                 return@hookAllMethods chain.proceed(chain.args.toTypedArray())
@@ -749,7 +858,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                     packageName = pkgName
                                 )
                                 try {
-                                    ModuleBinderDeaths.watch(binder) {
+                                    ModuleBinderDeaths.watch(binder, "location-callback") {
                                         activeCallbackBinders.remove(binder)
                                         logLoc("[SysLoc] Callback binder died: $pkgName")
                                     }
@@ -773,18 +882,9 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                     getJitteredAccuracy()
                                 )
                                 if (fakeLoc != null) {
-                                    val onLocationMethod = callback.javaClass.methods.firstOrNull {
-                                        it.name == "onLocation" && it.parameterTypes.size == 1
-                                    }
-                                    if (onLocationMethod != null) {
-                                        try {
-                                            onLocationMethod.invoke(callback, fakeLoc)
-                                            logLoc("[SysLoc] Proactively dispatched fake location to getCurrentLocation callback for $pkgName (lat=${motion.lat}, lng=${motion.lng}, provider=$provider)"
-                                            )
-                                            return@hookAllMethods createDummyCancellationSignal()
-                                        } catch (t: Throwable) {
-                                            logLoc("[SysLoc] proactive callback invoke failed: $t")
-                                        }
+                                    if (dispatchCurrentLocationCallbackAsync(callback, fakeLoc)) {
+                                        logLoc("[SysLoc] Queued first-fix for getCurrentLocation callback to $pkgName (provider=$provider)")
+                                        return@hookAllMethods createDummyCancellationSignal()
                                     }
                                 }
                             }
@@ -858,7 +958,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                         packageName = pkgName
                                     )
                                     try {
-                                        ModuleBinderDeaths.watch(binder) {
+                                        ModuleBinderDeaths.watch(binder, "gnss-status") {
                                             activeGnssStatusBinders.remove(binder)
                                             logLoc("[SysLoc] GNSS status listener died: $pkgName")
                                         }
@@ -902,6 +1002,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                     val binder = (callback as? IInterface)?.asBinder() ?: (callback as? IBinder)
                     if (binder != null) {
                         activeGnssStatusBinders.remove(binder)
+                        ModuleBinderDeaths.unwatch(binder, "gnss-status")
                     }
                 }
                 return@hookAllMethods chain.proceed(chain.args.toTypedArray())
@@ -932,7 +1033,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                         packageName = pkgName
                                     )
                                     try {
-                                        ModuleBinderDeaths.watch(binder) {
+                                        ModuleBinderDeaths.watch(binder, "gnss-nmea") {
                                             activeGnssNmeaBinders.remove(binder)
                                             logLoc("[SysLoc] NMEA listener died: $pkgName")
                                         }
@@ -968,6 +1069,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                     val binder = (callback as? IInterface)?.asBinder() ?: (callback as? IBinder)
                     if (binder != null) {
                         activeGnssNmeaBinders.remove(binder)
+                        ModuleBinderDeaths.unwatch(binder, "gnss-nmea")
                     }
                 }
                 return@hookAllMethods chain.proceed(chain.args.toTypedArray())
@@ -1074,7 +1176,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                         packageName = targetPkg
                                     )
                                     try {
-                                        ModuleBinderDeaths.watch(binder) { activeCallbackBinders.remove(binder) }
+                                        ModuleBinderDeaths.watch(binder, "location-callback") { activeCallbackBinders.remove(binder) }
                                     } catch (_: Throwable) {}
                                 }
                                 spoofedListenerInstances.add(callback)
@@ -1092,12 +1194,10 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                         getJitteredAccuracy()
                                     )
                                     if (fakeLoc != null) {
-                                        val onLocMethod = callback.javaClass.methods.firstOrNull {
-                                            it.name == "onLocation" && it.parameterTypes.size == 1
+                                        if (dispatchCurrentLocationCallbackAsync(callback, fakeLoc)) {
+                                            logLoc("[SysLoc] LocationProviderManager.getCurrentLocation queued first-fix for $targetPkg (provider=$provider)")
+                                            return@hookAllMethods createDummyCancellationSignal()
                                         }
-                                        onLocMethod?.invoke(callback, fakeLoc)
-                                        logLoc("[SysLoc] LocationProviderManager.getCurrentLocation proactive dispatch for $targetPkg (lat=${motion.lat}, lng=${motion.lng}, provider=$provider)")
-                                        return@hookAllMethods createDummyCancellationSignal()
                                     }
                                 }
                             }
@@ -1151,7 +1251,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                         packageName = pkgName ?: "target",
                                         provider = providerName
                                     )
-                                    try { ModuleBinderDeaths.watch(binder) { activeListenerBinders.remove(binder) } } catch (_: Throwable) {}
+                                    try { ModuleBinderDeaths.watch(binder, "location-listener") { activeListenerBinders.remove(binder) } } catch (_: Throwable) {}
                                 }
                                 spoofedListenerInstances.add(listener)
                                 ensureCallbackHooked(listener, "onLocationChanged")
@@ -1168,8 +1268,8 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                     )
                                     if (fakeLoc != null) {
                                         try {
-                                            dispatchFakeLocationToListener(listener, fakeLoc)
-                                            logLoc("[SysLoc] LocationProviderManager.$mName proactive dispatch for $pkgName (lat=${motion.lat}, lng=${motion.lng}, provider=$providerName)")
+                                            dispatchFakeLocationAsync(listener, fakeLoc)
+                                            logLoc("[SysLoc] LocationProviderManager.$mName queued first-fix dispatch for $pkgName (lat=${motion.lat}, lng=${motion.lng}, provider=$providerName)")
                                         } catch (t: Throwable) {
                                             logLoc("[SysLoc] proactive dispatch error: $t")
                                         }
@@ -1181,7 +1281,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                             val pi = chain.args.firstOrNull { it is android.app.PendingIntent } as? android.app.PendingIntent
                             if (pi != null) {
                                 val targetPkg = pkgName ?: pi.creatorPackage ?: "target"
-                                activePendingIntents[pi] = targetPkg
+                                trackPendingIntent(pi, targetPkg)
                                 logLoc("[SysLoc] LocationProviderManager.$mName PendingIntent captured for $targetPkg")
                             }
                         }
@@ -1204,6 +1304,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                                 val binder = (arg as? IInterface)?.asBinder() ?: (arg as? IBinder)
                                 if (binder != null) {
                                     activeListenerBinders.remove(binder)
+                                    ModuleBinderDeaths.unwatch(binder, "location-listener")
                                 }
                                 spoofedListenerInstances.remove(arg)
                             }
@@ -1294,7 +1395,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                     val config = readConfig()
                     if (config != null && config.optBoolean("active", false)) {
                         val isGlobal = config.optBoolean("system_hook_global_mode", false)
-                        var isTarget = isGlobal
+                        var isTarget = false
                         if (!isTarget) {
                             val listener = try { XposedHelpers.getObjectField(chain.thisObject, "mListener") } catch (_: Throwable) { null }
                             val binder = (listener as? IInterface)?.asBinder() ?: (listener as? IBinder)
@@ -1434,6 +1535,8 @@ private fun LocationHooker.hookPendingIntentDelivery(classLoader: ClassLoader) {
         val config = readConfig()
         if (config != null && config.optBoolean("active", false)) {
             val pi = chain.thisObject as? android.app.PendingIntent
+            pendingIntentRegisteredAt.entries.removeIf { System.currentTimeMillis() - it.value > PENDING_INTENT_TTL_MS }
+            activePendingIntents.keys.removeIf { it !in pendingIntentRegisteredAt.keys }
             val isTarget = if (pi != null && activePendingIntents.containsKey(pi)) {
                 true
             } else {
@@ -1463,7 +1566,13 @@ private fun LocationHooker.hookPendingIntentDelivery(classLoader: ClassLoader) {
                 }
             }
         }
-        return@hookAllMethods chain.proceed(chain.args.toTypedArray())
+        val pendingIntent = chain.thisObject as? android.app.PendingIntent
+        return@hookAllMethods try {
+            chain.proceed(chain.args.toTypedArray())
+        } catch (error: android.app.PendingIntent.CanceledException) {
+            if (pendingIntent != null) removePendingIntent(pendingIntent)
+            throw error
+        }
     }
     logLoc("[SysLoc] PendingIntent.send hooked for location intent rewrite")
 }

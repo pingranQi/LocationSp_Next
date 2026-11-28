@@ -2,6 +2,7 @@
 
 package com.vincenthzr.locationspoofer.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -246,6 +247,7 @@ data class SavedRouteEntity(
     val name: String,
     val pointsJson: String = "[]",
     /** 来源标记："" = 普通路线（手动选点/摇杆），"trajectory" = GPS 轨迹录制 */
+    @ColumnInfo(defaultValue = "''")
     val source: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )

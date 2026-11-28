@@ -2,6 +2,7 @@ package com.vincenthzr.locationspoofer.utils
 
 import com.vincenthzr.locationspoofer.utils.CoordinateUtils.LatLng
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -48,6 +49,29 @@ class TrajectoryGeometryTest {
     }
 
     @Test
+    fun `closeLoop rejects invalid thresholds`() {
+        val pts = listOf(p(0.0, 0.0), p(50.0, 10.0), p(100.0, 20.0))
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.closeLoopIfNear(pts, Double.NaN)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.closeLoopIfNear(pts, -1.0)
+        }
+    }
+
+    @Test
+    fun `heading rejects invalid coordinates`() {
+        val pts = listOf(
+            TrajectoryPoint(0.0, 0.0, 0.0),
+            TrajectoryPoint(Double.NaN, 1.0, 1.0)
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.headingAt(pts, 1)
+        }
+    }
+
+
+    @Test
     fun `heading falls back to the direction between points`() {
         // 一直向北走：方向应为 0 度
         val pts = listOf(p(0.0, 0.0), p(10.0, 1.0), p(20.0, 2.0), p(30.0, 3.0))
@@ -56,10 +80,53 @@ class TrajectoryGeometryTest {
     }
 
     @Test
-    fun `heading prefers gps bearing when available`() {
+    fun `heading uses track geometry and ignores unstable gps bearing`() {
         val pts = listOf(p(0.0, 0.0), p(10.0, 1.0))
         val heading = TrajectoryGeometry.headingAt(pts, 1, gpsBearingDeg = 123.0)
-        assertEquals(123.0, heading, 1e-9)
+        assertTrue("heading=$heading", heading < 5.0 || heading > 355.0)
+    }
+
+    @Test
+    fun `heading uses the short longitude direction across antimeridian`() {
+        val pts = listOf(
+            TrajectoryPoint(0.0, 179.9, 0.0),
+            TrajectoryPoint(0.0, -179.9, 1.0)
+        )
+        val heading = TrajectoryGeometry.headingAt(pts, 1)
+        assertTrue("heading=$heading", kotlin.math.abs(heading - 90.0) < 1.0)
+    }
+
+    @Test
+    fun `loop closure rejects invalid coordinates`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.closeLoopIfNear(
+                listOf(
+                    TrajectoryPoint(0.0, 0.0, 0.0),
+                    TrajectoryPoint(Double.NaN, 0.0, 1.0),
+                    TrajectoryPoint(0.0, 0.0, 2.0)
+                )
+            )
+        }
+    }
+
+    @Test
+    fun `arrow geometry rejects invalid center and heading`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.arrowPoints(Double.NaN, 120.0, 0.0)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.arrowPoints(30.0, 120.0, Double.NaN)
+        }
+    }
+
+    @Test
+    fun `arrow geometry rejects invalid dimensions`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.arrowPoints(30.0, 120.0, 0.0, lengthM = Double.NaN)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryGeometry.arrowPoints(30.0, 120.0, 0.0, spreadDeg = 181.0)
+        }
     }
 
     @Test

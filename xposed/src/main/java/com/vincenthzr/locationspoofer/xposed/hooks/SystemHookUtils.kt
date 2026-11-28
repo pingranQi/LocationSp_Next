@@ -229,10 +229,9 @@ object SystemHookUtils {
             return false
         }
 
-        // 若是 system_server 内部发起的调用（uid=1000）且无显式外部包名，则不干扰系统内部逻辑
-        if (uid <= 1000 && explicitPackage == null) {
-            return false
-        }
+        // Never trust a package string without a real application Binder identity.
+        // Framework paths that clear Binder identity must pass a captured CallerIdentity UID.
+        if (uid < 10000) return false
 
         // 严格排除系统核心组件与定位服务
         if (cleanPkg != null && EXEMPT_PACKAGES.contains(cleanPkg)) {
@@ -240,6 +239,12 @@ object SystemHookUtils {
         }
 
         val callingPackages = resolveCallingPackages(serviceInstance, uid)
+        // Fail closed if PackageManager cannot establish the UID -> package relationship.
+        if (callingPackages.isEmpty()) return false
+        if (cleanPkg != null && callingPackages.none { it.substringBefore(":") == cleanPkg }) {
+            XposedBridge.log("[SysHook] Reject caller/package mismatch: uid=$uid package=$cleanPkg")
+            return false
+        }
         if (callingPackages.any { it.substringBefore(":") == "com.vincenthzr.locationspoofer" }) {
             return false
         }

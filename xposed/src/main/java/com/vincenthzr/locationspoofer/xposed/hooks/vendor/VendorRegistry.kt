@@ -66,12 +66,16 @@ object VendorRegistry {
      * 灌入用户手动选择的适配器 id。必须在 [active] 首次被求值前调用，晚了会被忽略并打日志——
      * 详见类注释"手动覆盖自动识别"一节。
      */
+    private val selectionLock = Any()
+
     fun applyManualOverride(id: String?) {
-        if (activeResolved) {
-            XposedBridge.log("[Vendor] applyManualOverride($id) 被忽略：active 已经求值过，调用时机太晚了")
-            return
+        synchronized(selectionLock) {
+            if (activeResolved) {
+                XposedBridge.log("[Vendor] applyManualOverride($id) 被忽略：active 已经求值过，调用时机太晚了")
+                return
+            }
+            manualOverrideId = id
         }
-        manualOverrideId = id
     }
 
     /** [active] 是否已经被求值过——`by lazy` 本身不暴露这个状态，用这个标记位补上，供 [applyManualOverride] 判断时机。 */
@@ -80,8 +84,10 @@ object VendorRegistry {
 
     /** 当前设备命中的适配器：手动覆盖优先；否则取所有 [SystemHookVendor.matches] 为真者中 [SystemHookVendor.priority] 最大的一个。 */
     val active: SystemHookVendor by lazy {
-        activeResolved = true
-        select(VendorProfile.current, manualOverrideId)
+        synchronized(selectionLock) {
+            activeResolved = true
+            select(VendorProfile.current, manualOverrideId)
+        }
     }
 
     /** 当前命中的适配器是否来自用户手动指定 */

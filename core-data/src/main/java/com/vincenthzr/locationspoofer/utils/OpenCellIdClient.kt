@@ -4,12 +4,37 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
 class OpenCellIdClient {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
+    private companion object { const val MAX_RESPONSE_BYTES = 1_048_576L }
+
+    private fun readBoundedBody(response: okhttp3.Response): String? {
+        val body = response.body ?: return null
+        if (body.contentLength() > MAX_RESPONSE_BYTES) return null
+        val output = java.io.ByteArrayOutputStream()
+        body.byteStream().use { input ->
+            val buffer = ByteArray(8192)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                if (total > MAX_RESPONSE_BYTES) return null
+                output.write(buffer, 0, count)
+            }
+        }
+        return output.toString(Charsets.UTF_8.name())
+    }
 
     /** 验证 token 是否有效 */
     suspend fun validateToken(token: String): Boolean = withContext(Dispatchers.IO) {
@@ -17,24 +42,16 @@ class OpenCellIdClient {
             return@withContext false
         }
         return@withContext try {
-            val url =
-                "https://opencellid.org/cell/getInArea?key=$token&BBOX=0.0,0.0,0.0,0.0&format=json"
-            val request = Request.Builder()
-                .url(url)
+            val url = "https://opencellid.org/cell/getInArea".toHttpUrl().newBuilder()
+                .addQueryParameter("key", token)
+                .addQueryParameter("BBOX", "0.0,0.0,0.0,0.0")
+                .addQueryParameter("format", "json")
                 .build()
-            val response = client.newCall(request).execute()
-            if (response.isSuccessful) {
-                val body = response.body?.string() ?: return@withContext false
+            client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (!response.isSuccessful) return@use false
+                val body = readBoundedBody(response) ?: return@use false
                 val json = JSONObject(body)
-                if (json.has("error")) {
-                    // code 1 表示“未找到基站”，这实际上验证了密钥存在并且有效。
-                    // code 2 表示“API Key not known”或其他代码指示密钥无效。
-                    json.optInt("code") == 1
-                } else {
-                    true
-                }
-            } else {
-                false
+                if (json.has("error")) json.optInt("code") == 1 else true
             }
         } catch (e: Exception) {
             false
@@ -52,31 +69,19 @@ class OpenCellIdClient {
 
             try {
                 for (box in searchBoxes) {
-                    val url =
-                        "https://opencellid.org/cell/getInArea?key=$token&BBOX=${box.latMin},${box.lonMin},${box.latMax},${box.lonMax}&format=json&limit=20"
-                    val request = Request.Builder()
-                        .url(url)
+                    val url = "https://opencellid.org/cell/getInArea".toHttpUrl().newBuilder()
+                        .addQueryParameter("key", token)
+                        .addQueryParameter("BBOX", "${box.latMin},${box.lonMin},${box.latMax},${box.lonMax}")
+                        .addQueryParameter("format", "json")
+                        .addQueryParameter("limit", "20")
                         .build()
-
-                    val response = client.newCall(request).execute()
-                    val code = response.code
-                    if (response.isSuccessful) {
-                        val body = response.body?.string()
-                        if (body == null) {
-                            continue
-                        }
-                        val jsonObject = JSONObject(body)
-                        val cells = jsonObject.optJSONArray("cells")
-                        if (cells == null || cells.length() == 0) {
-                            continue
-                        }
+                    client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                        if (!response.isSuccessful) return@use
+                        val body = readBoundedBody(response) ?: return@use
+                        val cells = JSONObject(body).optJSONArray("cells") ?: return@use
+                        if (cells.length() == 0) return@use
                         val normalizedCells = normalizeOpenCellIdCells(cells)
-                        if (normalizedCells.length() == 0) {
-                            continue
-                        }
-                        return@withContext normalizedCells.toString()
-                    } else {
-                        // 请求未成功，尝试下一个半径
+                        if (normalizedCells.length() > 0) return@withContext normalizedCells.toString()
                     }
                 }
                 return@withContext "[]"

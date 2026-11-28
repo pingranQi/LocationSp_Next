@@ -23,7 +23,12 @@ import com.vincenthzr.locationspoofer.xposed.LocationHooker
 import com.vincenthzr.locationspoofer.xposed.utils.*
 import org.json.JSONObject
 import kotlin.random.Random
+import java.util.concurrent.ConcurrentHashMap
 import io.github.libxposed.api.*
+
+internal val bleScanReportDelayMillis = ConcurrentHashMap<Any, Long>()
+
+internal fun shouldBatchBleResults(reportDelayMillis: Long): Boolean = reportDelayMillis > 0L
 
 /**
  * 蓝牙 LE 扫描环境伪造模块入口，以及扫描结果的回调派发/定时器。
@@ -54,6 +59,13 @@ internal fun LocationHooker.hookBluetoothLE(
                         XposedBridge.log("[LocationSpoofer] BluetoothLeScanner.$scanName 放行原生系统 (active/mock_bt 为 false)")
                         return@hookAllMethods chain.proceed(chain.args.toTypedArray())
                     }
+                    val reportDelayMillis = chain.args.firstOrNull {
+                        it?.javaClass?.name == "android.bluetooth.le.ScanSettings"
+                    }?.let { settings ->
+                        runCatching {
+                            (XposedHelpers.callMethod(settings, "getReportDelayMillis") as? Number)?.toLong()
+                        }.getOrNull()
+                    }?.coerceAtLeast(0L) ?: 0L
                     val callback = chain.args.firstOrNull { isScanCallback(it) }
                         ?: chain.args.lastOrNull {
                             it != null && it !is List<*> && it !is java.util.Collection<*> &&
@@ -62,16 +74,16 @@ internal fun LocationHooker.hookBluetoothLE(
                                     !it.javaClass.name.contains("PendingIntent") &&
                                     !it.javaClass.name.contains("WorkSource")
                         }
-                    if (callback != null) {
-                        XposedBridge.log("[LocationSpoofer] 成功拦截 $scanName, 目标回调=${callback.javaClass.name}, 启动心跳分发")
-                        startBleTimer(callback, classLoader)
-                    } else {
-                        XposedBridge.log("[LocationSpoofer] $scanName 未找到匹配的 ScanCallback, args=${chain.args.map { it?.javaClass?.name }}")
+                    // Keep the real Bluetooth HAL scan and overlay synthetic results only after success.
+                    val result = chain.proceed(chain.args.toTypedArray())
+                    if (callback != null && (method !is java.lang.reflect.Method ||
+                            method.returnType != Int::class.javaPrimitiveType || result == 0)) {
+                        XposedBridge.log("[LocationSpoofer] Native $scanName accepted; overlay synthetic results")
+                        startBleTimer(callback, classLoader, reportDelayMillis)
+                    } else if (callback == null) {
+                        XposedBridge.log("[LocationSpoofer] $scanName callback not identified; native scan left untouched")
                     }
-                    if (method is java.lang.reflect.Method && method.returnType == Int::class.javaPrimitiveType) {
-                        return@hookAllMethods 0
-                    }
-                    return@hookAllMethods null
+                    return@hookAllMethods result
                 }
             } catch (e: Throwable) {
                 XposedBridge.log("[LocationSpoofer] Hook BluetoothLeScanner.$scanName 异常: $e")
@@ -107,11 +119,12 @@ internal fun LocationHooker.hookBluetoothLE(
                 }
                 val callback = chain.args.firstOrNull { isLeScanCallback(it) }
                     ?: chain.args.lastOrNull { it != null && it !is Array<*> }
-                if (callback != null) {
-                    XposedBridge.log("[LocationSpoofer] 成功拦截 startLeScan, 目标回调=${callback.javaClass.name}")
+                val result = chain.proceed(chain.args.toTypedArray()) as? Boolean ?: false
+                if (result && callback != null) {
+                    XposedBridge.log("[LocationSpoofer] Native startLeScan accepted; overlay synthetic results")
                     startOldLeScanTimer(callback, classLoader)
                 }
-                return@hookAllMethods true
+                return@hookAllMethods result
             }
         } catch (_: Throwable) {}
 
@@ -142,74 +155,10 @@ internal fun LocationHooker.hookBluetoothLE(
             }
         } catch (_: Throwable) {}
 
-        // 5. Hook BluetoothAdapter 状态查询与特性支持
-        val booleanTrueMethods = arrayOf(
-            "isEnabled",
-            "isLeEnabled",
-            "getLeAccess",
-            "isOffloadedFilteringSupported",
-            "isOffloadedScanBatchingSupported",
-            "isMultipleAdvertisementSupported",
-            "isLe2MPhySupported",
-            "isLeCodedPhySupported",
-            "isLeExtendedAdvertisingSupported",
-            "isLePeriodicAdvertisingSupported"
-        )
-        for (mName in booleanTrueMethods) {
-            try {
-                XposedHelpers.hookAllMethods(bluetoothAdapterClass, mName) { chain, _ ->
-                    val config = readConfig()
-                    if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                        return@hookAllMethods true
-                    }
-                    return@hookAllMethods chain.proceed(chain.args.toTypedArray())
-                }
-            } catch (_: Throwable) {}
-        }
+        // Do not fabricate adapter power/state or chipset capabilities; retain native hardware state.
 
-        val stateMethods = arrayOf("getState", "getLeState")
-        for (mName in stateMethods) {
-            try {
-                XposedHelpers.hookAllMethods(bluetoothAdapterClass, mName) { chain, _ ->
-                    val config = readConfig()
-                    if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                        return@hookAllMethods 12 // BluetoothAdapter.STATE_ON
-                    }
-                    return@hookAllMethods chain.proceed(chain.args.toTypedArray())
-                }
-            } catch (_: Throwable) {}
-        }
-
-        // 6. Hook BluetoothAdapter.getBluetoothLeScanner
-        try {
-            XposedHelpers.hookAllMethods(bluetoothAdapterClass, "getBluetoothLeScanner") { chain, _ ->
-                val result = chain.proceed(chain.args.toTypedArray())
-                val config = readConfig()
-                if (result == null && config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                    val adapter = chain.thisObject
-                    try {
-                        var scanner = XposedHelpers.getObjectField(adapter, "mBluetoothLeScanner")
-                        if (scanner == null && leScannerClass != null) {
-                            for (c in leScannerClass.declaredConstructors) {
-                                try {
-                                    c.isAccessible = true
-                                    val dummyArgs = arrayOfNulls<Any>(c.parameterCount)
-                                    scanner = c.newInstance(*dummyArgs)
-                                    if (scanner != null) break
-                                } catch (_: Throwable) {}
-                            }
-                            if (scanner != null) {
-                                try {
-                                    XposedHelpers.setObjectField(adapter, "mBluetoothLeScanner", scanner)
-                                } catch (_: Throwable) {}
-                            }
-                        }
-                        if (scanner != null) return@hookAllMethods scanner
-                    } catch (_: Throwable) {}
-                }
-                return@hookAllMethods result
-            }
-        } catch (_: Throwable) {}
+        // Do not manufacture a scanner when Bluetooth is disabled or the framework denied access.
+        // Keep the platform's real null/non-null result.
 
         // 7. Hook BluetoothAdapter.getBondedDevices
         try {
@@ -218,7 +167,9 @@ internal fun LocationHooker.hookBluetoothLE(
                 if (!config.optBoolean("active", false) || !config.optBoolean("mock_bluetooth", true)) {
                     return@hookAllMethods chain.proceed(chain.args.toTypedArray())
                 }
+                val nativeBonded = chain.proceed(chain.args.toTypedArray()) as? Set<*>
                 val bondedSet = java.util.HashSet<Any>()
+                if (nativeBonded != null) bondedSet.addAll(nativeBonded.filterNotNull())
                 try {
                     val bluetoothArray = config.optJSONArray("bluetooth_json")
                     if (bluetoothArray != null && bluetoothArray.length() > 0) {
@@ -243,6 +194,8 @@ internal fun LocationHooker.hookBluetoothLE(
                 if (!config.optBoolean("active", false) || !config.optBoolean("mock_bluetooth", true)) {
                     return@hookAllMethods chain.proceed(chain.args.toTypedArray())
                 }
+                val started = chain.proceed(chain.args.toTypedArray()) as? Boolean ?: false
+                if (!started) return@hookAllMethods started
                 val bluetoothArray = config.optJSONArray("bluetooth_json")
                 if (bluetoothArray != null && bluetoothArray.length() > 0) {
                     try {
@@ -277,7 +230,7 @@ internal fun LocationHooker.hookBluetoothLE(
                         }
                     } catch (_: Throwable) {}
                 }
-                return@hookAllMethods true
+                return@hookAllMethods started
             }
         } catch (_: Throwable) {}
     }
@@ -506,20 +459,6 @@ internal fun LocationHooker.hookBluetoothLE(
         } catch (_: Throwable) {}
     }
 
-    // 11. Hook ScanFilter.matches (确保客户端过滤恒通过)
-    val scanFilterClass = XposedHelpers.findClassIfExists("android.bluetooth.le.ScanFilter", classLoader)
-    if (scanFilterClass != null) {
-        try {
-            XposedHelpers.hookAllMethods(scanFilterClass, "matches") { chain, _ ->
-                val config = readConfig()
-                if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                    return@hookAllMethods true
-                }
-                return@hookAllMethods chain.proceed(chain.args.toTypedArray())
-            }
-        } catch (_: Throwable) {}
-    }
-
     // 12. Hook BluetoothManager.getConnectedDevices & getDevicesMatchingConnectionStates & getAdapter
     val bluetoothManagerClass = XposedHelpers.findClassIfExists("android.bluetooth.BluetoothManager", classLoader)
     if (bluetoothManagerClass != null) {
@@ -540,45 +479,47 @@ internal fun LocationHooker.hookBluetoothLE(
 
         try {
             XposedHelpers.hookAllMethods(bluetoothManagerClass, "getConnectedDevices") { chain, _ ->
+                val native = chain.proceed(chain.args.toTypedArray()) as? List<*>
                 val config = readConfig()
-                if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                    val bluetoothArray = config.optJSONArray("bluetooth_json")
-                    if (bluetoothArray != null && bluetoothArray.length() > 0) {
-                        val list = java.util.ArrayList<Any>()
-                        for (i in 0 until bluetoothArray.length()) {
-                            val obj = bluetoothArray.getJSONObject(i)
-                            if (obj.optBoolean("isConnected", false) || obj.optBoolean("isDesignated", false)) {
-                                val address = obj.optString("address", "00:00:00:00:00:00")
-                                val dev = createBluetoothDevice(classLoader, address)
-                                if (dev != null) list.add(dev)
-                            }
+                if (config == null || !config.optBoolean("active", false) || !config.optBoolean("mock_bluetooth", true)) {
+                    return@hookAllMethods native ?: emptyList<Any>()
+                }
+                val list = java.util.ArrayList<Any>()
+                native?.filterNotNull()?.let { list.addAll(it) }
+                val bluetoothArray = config.optJSONArray("bluetooth_json")
+                if (bluetoothArray != null) {
+                    for (i in 0 until bluetoothArray.length()) {
+                        val obj = bluetoothArray.getJSONObject(i)
+                        if (obj.optBoolean("isConnected", false) || obj.optBoolean("isDesignated", false)) {
+                            val dev = createBluetoothDevice(classLoader, obj.optString("address", "00:00:00:00:00:00"))
+                            if (dev != null) list.add(dev)
                         }
-                        if (list.isNotEmpty()) return@hookAllMethods list
                     }
                 }
-                return@hookAllMethods chain.proceed(chain.args.toTypedArray())
+                return@hookAllMethods list
             }
         } catch (_: Throwable) {}
 
         try {
             XposedHelpers.hookAllMethods(bluetoothManagerClass, "getDevicesMatchingConnectionStates") { chain, _ ->
+                val native = chain.proceed(chain.args.toTypedArray()) as? List<*>
                 val config = readConfig()
-                if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-                    val bluetoothArray = config.optJSONArray("bluetooth_json")
-                    if (bluetoothArray != null && bluetoothArray.length() > 0) {
-                        val list = java.util.ArrayList<Any>()
-                        for (i in 0 until bluetoothArray.length()) {
-                            val obj = bluetoothArray.getJSONObject(i)
-                            if (obj.optBoolean("isConnected", false) || obj.optBoolean("isDesignated", false)) {
-                                val address = obj.optString("address", "00:00:00:00:00:00")
-                                val dev = createBluetoothDevice(classLoader, address)
-                                if (dev != null) list.add(dev)
-                            }
+                if (config == null || !config.optBoolean("active", false) || !config.optBoolean("mock_bluetooth", true)) {
+                    return@hookAllMethods native ?: emptyList<Any>()
+                }
+                val list = java.util.ArrayList<Any>()
+                native?.filterNotNull()?.let { list.addAll(it) }
+                val bluetoothArray = config.optJSONArray("bluetooth_json")
+                if (bluetoothArray != null) {
+                    for (i in 0 until bluetoothArray.length()) {
+                        val obj = bluetoothArray.getJSONObject(i)
+                        if (obj.optBoolean("isConnected", false) || obj.optBoolean("isDesignated", false)) {
+                            val dev = createBluetoothDevice(classLoader, obj.optString("address", "00:00:00:00:00:00"))
+                            if (dev != null) list.add(dev)
                         }
-                        if (list.isNotEmpty()) return@hookAllMethods list
                     }
                 }
-                return@hookAllMethods chain.proceed(chain.args.toTypedArray())
+                return@hookAllMethods list
             }
         } catch (_: Throwable) {}
     }
@@ -667,7 +608,12 @@ internal fun LocationHooker.dispatchBatchResultsToCallback(callback: Any, result
 // BLE 扫描结果伪造的核心分发逻辑
 internal val syntheticBleDelivery = com.vincenthzr.locationspoofer.xposed.utils.CallScope<Boolean>()
 
-internal fun LocationHooker.deliverBleScanResults(config: JSONObject, callback: Any, cl: ClassLoader) {
+internal fun LocationHooker.deliverBleScanResults(
+    config: JSONObject,
+    callback: Any,
+    cl: ClassLoader,
+    isCurrentScan: () -> Boolean = { true }
+) {
         val mainHandler = Handler(Looper.getMainLooper())
         val scanRecordClass = XposedHelpers.findClassIfExists("android.bluetooth.le.ScanRecord", cl)
         if (!config.optBoolean("mock_bluetooth", true)) return
@@ -706,14 +652,6 @@ internal fun LocationHooker.deliverBleScanResults(config: JSONObject, callback: 
                 val scanResultObj = createScanResult(cl, device, scanRecord, rssi, timestampNanos)
                 if (scanResultObj != null) {
                     results.add(scanResultObj)
-                    mainHandler.post {
-                        try {
-                            syntheticBleDelivery.withValue(true) { dispatchScanResultToCallback(callback, scanResultObj) }
-                            XposedBridge.log("[LocationSpoofer] 成功派发 onScanResult 给 ${callback.javaClass.name} | MAC=$address RSSI=$rssi 广播包长=${rawBytes.size}")
-                        } catch (e: Throwable) {
-                            XposedBridge.log("[LocationSpoofer] 派发 onScanResult 异常: $e")
-                        }
-                    }
                 } else {
                     XposedBridge.log("[LocationSpoofer] 创建 ScanResult 失败 address=$address")
                 }
@@ -722,44 +660,79 @@ internal fun LocationHooker.deliverBleScanResults(config: JSONObject, callback: 
             }
         }
         if (results.isNotEmpty()) {
+            val batchMode = shouldBatchBleResults(bleScanReportDelayMillis[callback] ?: 0L)
             mainHandler.post {
+                if (!isCurrentScan()) return@post
                 try {
-                    syntheticBleDelivery.withValue(true) { dispatchBatchResultsToCallback(callback, results) }
-                } catch (_: Throwable) {}
+                    syntheticBleDelivery.withValue(true) {
+                        if (batchMode) {
+                            dispatchBatchResultsToCallback(callback, results)
+                        } else {
+                            results.forEach { dispatchScanResultToCallback(callback, it) }
+                        }
+                    }
+                } catch (error: Throwable) {
+                    XposedBridge.log("[LocationSpoofer] Synthetic BLE callback dispatch failed: $error")
+                }
             }
         }
     }
 
 // 启动周期性定时广播模拟真实信标心跳 (约每 200ms 发送一次)
-internal fun LocationHooker.startBleTimer(callback: Any, cl: ClassLoader) {
+internal fun LocationHooker.startBleTimer(
+    callback: Any,
+    cl: ClassLoader,
+    reportDelayMillis: Long = 0L
+) {
         bleScanTimers.remove(callback)?.cancel()
+        val safeReportDelay = reportDelayMillis.coerceAtLeast(0L)
+        bleScanReportDelayMillis[callback] = safeReportDelay
         val timer = java.util.Timer("LocationSpoofer-BleTimer", true)
         bleScanTimers[callback] = timer
+        val isCurrentScan = { bleScanTimers[callback] === timer }
 
-        // 立即执行第一次
+        // 立即执行第一次；queued callbacks are discarded after stop/replacement.
         val config = readConfig()
-        if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-            deliverBleScanResults(config, callback, cl)
+        // Immediate callbacks are valid only for reportDelay=0. Batched scans wait for their first window.
+        if (safeReportDelay == 0L &&
+            config != null &&
+            config.optBoolean("active", false) &&
+            config.optBoolean("mock_bluetooth", true)
+        ) {
+            deliverBleScanResults(config, callback, cl, isCurrentScan)
         }
 
+        val intervalMillis = if (safeReportDelay > 0L) safeReportDelay.coerceAtLeast(200L) else 200L
         timer.schedule(object : java.util.TimerTask() {
             override fun run() {
+                if (!isCurrentScan()) {
+                    cancel()
+                    return
+                }
                 val cfg = readConfig()
                 if (cfg == null || !cfg.optBoolean("active", false) || !cfg.optBoolean("mock_bluetooth", true)) {
                     cancel()
-                    bleScanTimers.remove(callback)
+                    if (bleScanTimers.remove(callback, timer)) {
+                        bleScanReportDelayMillis.remove(callback)
+                    }
                     return
                 }
-                deliverBleScanResults(cfg, callback, cl)
+                deliverBleScanResults(cfg, callback, cl, isCurrentScan)
             }
-        }, 200L, 200L)
+        }, intervalMillis, intervalMillis)
     }
 
 internal fun LocationHooker.stopBleTimer(callback: Any) {
         bleScanTimers.remove(callback)?.cancel()
+        bleScanReportDelayMillis.remove(callback)
     }
 
-internal fun LocationHooker.deliverOldLeScanResults(config: JSONObject, callback: Any, cl: ClassLoader) {
+internal fun LocationHooker.deliverOldLeScanResults(
+    config: JSONObject,
+    callback: Any,
+    cl: ClassLoader,
+    isCurrentScan: () -> Boolean = { true }
+) {
         val mainHandler = Handler(Looper.getMainLooper())
         if (!config.optBoolean("mock_bluetooth", true)) return
         val bluetoothArray = config.optJSONArray("bluetooth_json") ?: return
@@ -777,6 +750,7 @@ internal fun LocationHooker.deliverOldLeScanResults(config: JSONObject, callback
 
                 val device = createBluetoothDevice(cl, address) ?: continue
                 mainHandler.post {
+                    if (!isCurrentScan()) return@post
                     try {
                         XposedHelpers.callMethod(callback, "onLeScan", device, rssi, rawBytes)
                     } catch (_: Throwable) {}
@@ -789,23 +763,29 @@ internal fun LocationHooker.deliverOldLeScanResults(config: JSONObject, callback
 
 internal fun LocationHooker.startOldLeScanTimer(callback: Any, cl: ClassLoader) {
         bleScanTimers.remove(callback)?.cancel()
+        bleScanReportDelayMillis.remove(callback)
         val timer = java.util.Timer("LocationSpoofer-OldBleTimer", true)
         bleScanTimers[callback] = timer
+        val isCurrentScan = { bleScanTimers[callback] === timer }
 
         val config = readConfig()
         if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
-            deliverOldLeScanResults(config, callback, cl)
+            deliverOldLeScanResults(config, callback, cl, isCurrentScan)
         }
 
         timer.schedule(object : java.util.TimerTask() {
             override fun run() {
+                if (!isCurrentScan()) {
+                    cancel()
+                    return
+                }
                 val cfg = readConfig()
                 if (cfg == null || !cfg.optBoolean("active", false) || !cfg.optBoolean("mock_bluetooth", true)) {
                     cancel()
-                    bleScanTimers.remove(callback)
+                    bleScanTimers.remove(callback, timer)
                     return
                 }
-                deliverOldLeScanResults(cfg, callback, cl)
+                deliverOldLeScanResults(cfg, callback, cl, isCurrentScan)
             }
         }, 200L, 200L)
     }

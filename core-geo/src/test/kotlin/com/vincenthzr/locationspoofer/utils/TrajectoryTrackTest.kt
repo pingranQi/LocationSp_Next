@@ -2,6 +2,7 @@ package com.vincenthzr.locationspoofer.utils
 
 import com.vincenthzr.locationspoofer.utils.CoordinateUtils.LatLng
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -135,6 +136,66 @@ class TrajectoryTrackTest {
     }
 
     @Test
+    fun `defensively copies source point list`() {
+        val source = straightTrack().points.toMutableList()
+        val track = TrajectoryTrack(source)
+        source[1] = TrajectoryPoint(Double.NaN, Double.NaN, Double.NaN)
+        assertEquals(10.0, track.durationSec, 1e-9)
+        assertEquals(2.0, track.speedAt(0.5), 1e-6)
+    }
+
+    @Test
+    fun `rejects non-finite and out-of-range trajectory coordinates`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryTrack(listOf(TrajectoryPoint(0.0, 0.0, 0.0), TrajectoryPoint(Double.NaN, 1.0, 1.0)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryTrack(listOf(TrajectoryPoint(0.0, 0.0, 0.0), TrajectoryPoint(91.0, 1.0, 1.0)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryTrack(listOf(TrajectoryPoint(0.0, 0.0, 0.0), TrajectoryPoint(0.0, 1.0, Double.POSITIVE_INFINITY)))
+        }
+    }
+
+    @Test
+    fun `interpolates trajectory over antimeridian using shortest path`() {
+        val track = TrajectoryTrack(listOf(
+            TrajectoryPoint(0.0, 179.9, 0.0),
+            TrajectoryPoint(0.0, -179.9, 10.0)
+        ))
+        val midpoint = track.positionAt(5.0)
+        assertTrue(kotlin.math.abs(midpoint.lng) > 179.99)
+        assertTrue(kotlin.math.abs(midpoint.lng) <= 180.0)
+        assertEquals(
+            GeoMath.distance(LatLng(0.0, 179.9), LatLng(0.0, -179.9)) / 2.0,
+            GeoMath.distance(LatLng(0.0, 179.9), midpoint),
+            0.5
+        )
+    }
+
+    @Test
+    fun `rejects movement between identical timestamps`() {
+        val moved = GeoMath.destination(start, 0.0, 5.0)
+        assertThrows(IllegalArgumentException::class.java) {
+            TrajectoryTrack(
+                listOf(
+                    TrajectoryPoint(start.lat, start.lng, 0.0),
+                    TrajectoryPoint(moved.lat, moved.lng, 0.0)
+                )
+            )
+        }
+        val filtered = TrajectoryTrack.filter(
+            listOf(
+                TrajectoryPoint(start.lat, start.lng, 0.0),
+                TrajectoryPoint(moved.lat, moved.lng, 0.0),
+                TrajectoryPoint(moved.lat, moved.lng, 1.0)
+            )
+        )
+        assertTrue(filtered.all { it.tOffsetSec >= 0.0 })
+        assertTrue(filtered.none { it.tOffsetSec == 0.0 && GeoMath.distance(start, LatLng(it.lat, it.lng)) > 0.01 })
+    }
+
+    @Test
     fun `identical timestamps do not crash`() {
         val pts = listOf(
             TrajectoryPoint(start.lat, start.lng, 0.0),
@@ -189,7 +250,7 @@ class TrajectoryTrackTest {
     @Test
     fun `smooth returns short tracks unchanged`() {
         val one = listOf(TrajectoryPoint(start.lat, start.lng, 0.0))
-        assertEquals(1, TrajectoryTrack(one).smooth().size)
+        assertThrows(IllegalArgumentException::class.java) { TrajectoryTrack(one) }
         val a = GeoMath.destination(start, 0.0, 1.0)
         val two = listOf(
             TrajectoryPoint(start.lat, start.lng, 0.0),
@@ -214,62 +275,4 @@ class TrajectoryTrackTest {
     // 平滑：把密集 GPS 采样简化成干净的路点序列
     // ==============================================================
 
-    @Test
-    fun `smooth merges points closer than the minimum distance`() {
-        // 每米一个点，最小距离 2 米 → 应被压缩掉一半左右
-        val raw = (0..30).map { m ->
-            val p = GeoMath.destination(start, 0.0, m.toDouble())
-            TrajectoryPoint(p.lat, p.lng, m.toDouble())
-        }
-        val out = TrajectoryTrack(raw).smooth()
-        assertTrue("out=${out.size}", out.size <= 17)
-        assertTrue("out=${out.size}", out.size >= 2)
-    }
-
-    @Test
-    fun `smooth keeps the corner point even when it is close`() {
-        // 直行 10 米后急转 90 度走 1 米：转角必须保留，否则路径会切墙角
-        val a = GeoMath.destination(start, 0.0, 10.0)
-        val turn = GeoMath.destination(a, 90.0, 1.0)
-        val raw = listOf(
-            TrajectoryPoint(start.lat, start.lng, 0.0),
-            TrajectoryPoint(a.lat, a.lng, 5.0),
-            TrajectoryPoint(turn.lat, turn.lng, 6.0)
-        )
-        val out = TrajectoryTrack(raw).smooth()
-        assertEquals(3, out.size)
-    }
-
-    @Test
-    fun `smooth keeps widely spaced points untouched`() {
-        val raw = (0..10).map { m ->
-            val p = GeoMath.destination(start, 0.0, m * 10.0)
-            TrajectoryPoint(p.lat, p.lng, m.toDouble())
-        }
-        assertEquals(11, TrajectoryTrack(raw).smooth().size)
-    }
-
-    @Test
-    fun `smooth returns short tracks unchanged`() {
-        val one = listOf(TrajectoryPoint(start.lat, start.lng, 0.0))
-        assertEquals(1, TrajectoryTrack(one).smooth().size)
-        val a = GeoMath.destination(start, 0.0, 1.0)
-        val two = listOf(
-            TrajectoryPoint(start.lat, start.lng, 0.0),
-            TrajectoryPoint(a.lat, a.lng, 1.0)
-        )
-        assertEquals(2, TrajectoryTrack(two).smooth().size)
-    }
-
-    @Test
-    fun `smooth preserves timestamp order`() {
-        val raw = (0..30).map { m ->
-            val p = GeoMath.destination(start, 0.0, m.toDouble())
-            TrajectoryPoint(p.lat, p.lng, m.toDouble())
-        }
-        val out = TrajectoryTrack(raw).smooth()
-        for (i in 1 until out.size) {
-            assertTrue(out[i - 1].tOffsetSec <= out[i].tOffsetSec)
-        }
-    }
 }

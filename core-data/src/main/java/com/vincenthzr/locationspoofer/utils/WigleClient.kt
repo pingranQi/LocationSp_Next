@@ -7,7 +7,31 @@ import okhttp3.Request
 import org.json.JSONObject
 
 class WigleClient {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
+    private companion object { const val MAX_RESPONSE_BYTES = 1_048_576L }
+
+    private fun readBoundedBody(response: okhttp3.Response): String? {
+        val body = response.body ?: return null
+        if (body.contentLength() > MAX_RESPONSE_BYTES) return null
+        val output = java.io.ByteArrayOutputStream()
+        body.byteStream().use { input ->
+            val buffer = ByteArray(8192)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                if (total > MAX_RESPONSE_BYTES) return null
+                output.write(buffer, 0, count)
+            }
+        }
+        return output.toString(Charsets.UTF_8.name())
+    }
 
     /** 验证 token 是否有效（调用 /profile/user 接口） */
     suspend fun validateToken(token: String): Boolean = withContext(Dispatchers.IO) {
@@ -18,11 +42,11 @@ class WigleClient {
                 .addHeader("Authorization", "Basic $token")
                 .addHeader("Accept", "application/json")
                 .build()
-            val response = client.newCall(request).execute()
-            if (response.isSuccessful) {
-                val body = response.body?.string() ?: return@withContext false
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use false
+                val body = readBoundedBody(response) ?: return@use false
                 org.json.JSONObject(body).optString("success") == "true"
-            } else false
+            }
         } catch (e: Exception) {
             false
         }
@@ -49,28 +73,21 @@ class WigleClient {
                 .build()
 
             try {
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: return@withContext generateFallbackWifi()
-                    val jsonObject = JSONObject(body)
-                    val results = jsonObject.optJSONArray("results")
-                    if (results == null || results.length() == 0) {
-                        return@withContext generateFallbackWifi()
-                    }
-
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@withContext generateFallbackWifi()
+                    val body = readBoundedBody(response) ?: return@withContext generateFallbackWifi()
+                    val results = JSONObject(body).optJSONArray("results")
+                        ?: return@withContext generateFallbackWifi()
+                    if (results.length() == 0) return@withContext generateFallbackWifi()
                     val wifiList = mutableListOf<JSONObject>()
-                    val count = minOf(results.length(), 10)
-
-                    for (i in 0 until count) {
+                    for (i in 0 until minOf(results.length(), 10)) {
                         val item = results.getJSONObject(i)
-                        val wifi = JSONObject()
-                        wifi.put("ssid", item.optString("ssid", "WLAN_${(1000..9999).random()}"))
-                        wifi.put("bssid", item.optString("netid", generateRandomBssid()))
-                        wifiList.add(wifi)
+                        wifiList.add(JSONObject().apply {
+                            put("ssid", item.optString("ssid", "WLAN_${(1000..9999).random()}"))
+                            put("bssid", item.optString("netid", generateRandomBssid()))
+                        })
                     }
                     return@withContext wifiList.toString()
-                } else {
-                    return@withContext generateFallbackWifi()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

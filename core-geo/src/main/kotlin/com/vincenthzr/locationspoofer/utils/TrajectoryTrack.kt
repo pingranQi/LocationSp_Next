@@ -24,12 +24,22 @@ data class TrajectoryPoint(
  * 只保存“位置 + 时刻”，不保存速度：速度可由相邻两点反推，既省一份数据，
  * 也能容忍 GPS 的抖动（抖动会被相邻点平均掉）。
  */
-class TrajectoryTrack(val points: List<TrajectoryPoint>) {
+class TrajectoryTrack(points: List<TrajectoryPoint>) {
+    val points: List<TrajectoryPoint> = points.toList()
 
     init {
         require(points.size >= 2) { "a trajectory needs at least two points" }
-    require(points.zipWithNext().all { (a, b) -> b.tOffsetSec >= a.tOffsetSec }) {
-            "trajectory timestamps must be non-decreasing"
+        require(points.all { point ->
+            point.lat.isFinite() && point.lng.isFinite() && point.tOffsetSec.isFinite() &&
+                point.lat in -90.0..90.0 && point.lng in -180.0..180.0 && point.tOffsetSec >= 0.0
+        }) { "trajectory points must contain finite, in-range coordinates and non-negative timestamps" }
+        require(points.zipWithNext().all { (a, b) ->
+            b.tOffsetSec > a.tOffsetSec || GeoMath.distance(
+                CoordinateUtils.LatLng(a.lat, a.lng),
+                CoordinateUtils.LatLng(b.lat, b.lng)
+            ) <= 0.01
+        }) {
+            "points with identical timestamps must have effectively identical coordinates"
         }
     }
 
@@ -55,6 +65,7 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
      * 超出范围时钳到首尾（轨迹结束后停在终点）。
      */
     fun positionAt(elapsedSec: Double): CoordinateUtils.LatLng {
+        require(elapsedSec.isFinite()) { "elapsed time must be finite" }
         if (elapsedSec <= points.first().tOffsetSec) {
             return CoordinateUtils.LatLng(points.first().lat, points.first().lng)
         }
@@ -74,7 +85,7 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
         val ratio = if (span <= 0.0) 0.0 else (elapsedSec - a.tOffsetSec) / span
         return CoordinateUtils.LatLng(
             a.lat + (b.lat - a.lat) * ratio,
-            a.lng + (b.lng - a.lng) * ratio
+            interpolateLongitude(a.lng, b.lng, ratio)
         )
     }
 
@@ -85,6 +96,7 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
      * 这样得到的是分段常数速度——与真实运动相比更规整，也便于目标 App 稳定反推配速。
      */
     fun speedAt(elapsedSec: Double): Double {
+        require(elapsedSec.isFinite()) { "elapsed time must be finite" }
         if (points.size < 2) return 0.0
         var lo = 0
         var hi = points.size - 1
@@ -105,6 +117,11 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
         return segmentSpeed(a, b, dt)
     }
 
+    private fun interpolateLongitude(from: Double, to: Double, ratio: Double): Double {
+        val delta = ((to - from + 540.0) % 360.0) - 180.0
+        return ((from + delta * ratio + 540.0) % 360.0) - 180.0
+    }
+
     private fun segmentSpeed(a: TrajectoryPoint, b: TrajectoryPoint, dt: Double): Double {
         val d = GeoMath.distance(
             CoordinateUtils.LatLng(a.lat, a.lng),
@@ -120,6 +137,7 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
      * 系数 = 目标时长 / 原始时长；回放时用 原始时刻 × 系数 去查位置。
      */
     fun timeScaleFor(targetDurationSec: Double): Double {
+        require(targetDurationSec.isFinite() && targetDurationSec > 0.0) { "target duration must be finite and positive" }
         val d = durationSec
         if (d <= 0.0) return 1.0
         return targetDurationSec / d
@@ -142,6 +160,8 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
         minDistanceM: Double = DEFAULT_SMOOTH_MIN_DISTANCE_M,
         turnThresholdDeg: Double = DEFAULT_TURN_THRESHOLD_DEG
     ): List<TrajectoryPoint> {
+        require(minDistanceM.isFinite() && minDistanceM >= 0.0)
+        require(turnThresholdDeg.isFinite() && turnThresholdDeg in 0.0..180.0)
         if (points.size <= 2) return points
         val out = ArrayList<TrajectoryPoint>()
         out.add(points.first())
@@ -202,12 +222,19 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
             turnThresholdDeg: Double = DEFAULT_TURN_THRESHOLD_DEG,
             accuracyOf: (TrajectoryPoint) -> Double? = { null }
         ): List<TrajectoryPoint> {
+            require(minDistanceM.isFinite() && minDistanceM >= 0.0)
+            require(maxAccuracyM.isFinite() && maxAccuracyM > 0.0)
+            require(maxSpeedMps.isFinite() && maxSpeedMps > 0.0)
+            require(turnThresholdDeg.isFinite() && turnThresholdDeg in 0.0..180.0)
             if (raw.isEmpty()) return emptyList()
             val out = ArrayList<TrajectoryPoint>()
             for (p in raw) {
+                if (!p.lat.isFinite() || !p.lng.isFinite() || !p.tOffsetSec.isFinite() ||
+                    p.lat !in -90.0..90.0 || p.lng !in -180.0..180.0 || p.tOffsetSec < 0.0
+                ) continue
                 // 精度过滤：拿不到精度信息时（null）不丢弃
                 val acc = accuracyOf(p)
-                if (acc != null && acc > maxAccuracyM) continue
+                if (acc != null && (!acc.isFinite() || acc < 0.0 || acc > maxAccuracyM)) continue
                 // 时间单调
                 if (out.isNotEmpty() && p.tOffsetSec < out.last().tOffsetSec) continue
                 if (out.isNotEmpty()) {
@@ -217,6 +244,8 @@ class TrajectoryTrack(val points: List<TrajectoryPoint>) {
                         CoordinateUtils.LatLng(p.lat, p.lng)
                     )
                     val dt = p.tOffsetSec - prev.tOffsetSec
+                    // A non-zero movement at the same timestamp is an impossible instantaneous jump.
+                    if (dt <= 0.0 && d > 0.01) continue
                     // 速度异常（跳点）直接丢弃
                     if (dt > 0.0 && d / dt > maxSpeedMps) continue
                     // 距离太近：只有转向明显时才值得保留（转角处需要保留一个点）

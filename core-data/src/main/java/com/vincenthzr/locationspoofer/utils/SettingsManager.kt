@@ -14,20 +14,18 @@ class SettingsManager(context: Context) {
         context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
     init {
-        // 自动升级迁移：
-        // 修复之前版本将 mockWifi / mockCell / mockBluetooth 错误绑定导致旧配置中被意外写入 false 的历史遗留问题。
-        // 在系统级 Hook 架构下，Wi-Fi、基站与蓝牙均由系统服务自动实时合成高拟真环境数据，
-        // 必须默认保持开启以彻底杜绝高德/阿里/抖音等通过物理 Wi-Fi BSSID 与基站反查真实位置。
-        // 同时确保系统级全局模拟模式（is_system_hook_global_mode）默认开启。
-        // 仅全局方案执行：非全局方案不改动用户已有的开关设置。
+        // One-time migration: preserve existing feature choices but never silently enable
+        // system-wide hooks merely because the Global build variant was installed.
         if (BuildConfig.GLOBAL_SCHEME && !prefs.getBoolean("mock_switches_migrated_v3", false)) {
-            prefs.edit()
-                .putBoolean("mock_wifi", true)
-                .putBoolean("mock_cell", true)
-                .putBoolean("mock_bluetooth", true)
-                .putBoolean("is_system_hook_global_mode", true)
+            val editor = prefs.edit()
+                .putBoolean("mock_wifi", prefs.getBoolean("mock_wifi", true))
+                .putBoolean("mock_cell", prefs.getBoolean("mock_cell", true))
+                .putBoolean("mock_bluetooth", prefs.getBoolean("mock_bluetooth", true))
                 .putBoolean("mock_switches_migrated_v3", true)
-                .apply()
+            if (!prefs.contains("is_system_hook_global_mode")) {
+                editor.putBoolean("is_system_hook_global_mode", false)
+            }
+            editor.apply()
         }
     }
 
@@ -66,12 +64,12 @@ class SettingsManager(context: Context) {
         set(value) = prefs.edit().putString("custom_search_url", value).apply()
 
     var wigleApiToken: String
-        get() = prefs.getString("wigle_api_token", "") ?: ""
-        set(value) = prefs.edit().putString("wigle_api_token", value).apply()
+        get() = EncryptedTokenStore.read(prefs, "wigle_api_token")
+        set(value) = EncryptedTokenStore.write(prefs, "wigle_api_token", value)
 
     var opencellidApiToken: String
-        get() = prefs.getString("opencellid_api_token", "") ?: ""
-        set(value) = prefs.edit().putString("opencellid_api_token", value).apply()
+        get() = EncryptedTokenStore.read(prefs, "opencellid_api_token")
+        set(value) = EncryptedTokenStore.write(prefs, "opencellid_api_token", value)
 
     var mapType: String
         get() = prefs.getString("map_type", "NORMAL") ?: "NORMAL"
@@ -176,7 +174,7 @@ class SettingsManager(context: Context) {
      * 横穿地图的直线，看起来很假；闭合后就是自然的循环。
      */
     var autoCloseTrajectoryLoop: Boolean
-        get() = prefs.getBoolean("auto_close_trajectory_loop", true)
+        get() = prefs.getBoolean("auto_close_trajectory_loop", false)
         set(value) = prefs.edit().putBoolean("auto_close_trajectory_loop", value).apply()
 
     /**
@@ -394,8 +392,12 @@ class SettingsManager(context: Context) {
 
     /** 是否开启全局模拟模式（除本应用与系统基础核心外对所有应用生效） */
     var isSystemHookGlobalMode: Boolean
-        get() = prefs.getBoolean("is_system_hook_global_mode", true)
-        set(value) = prefs.edit().putBoolean("is_system_hook_global_mode", value).apply()
+        get() = prefs.getBoolean("global_mode_user_confirmed", false) &&
+            prefs.getBoolean("is_system_hook_global_mode", false)
+        set(value) = prefs.edit()
+            .putBoolean("is_system_hook_global_mode", value)
+            .putBoolean("global_mode_user_confirmed", true)
+            .apply()
     var forceLocationEnabled: Boolean
         get() = prefs.getBoolean("force_location_enabled", false)
         set(value) = prefs.edit().putBoolean("force_location_enabled", value).apply()

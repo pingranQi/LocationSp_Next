@@ -8,6 +8,7 @@ import com.vincenthzr.locationspoofer.data.model.GithubRelease
 import com.vincenthzr.locationspoofer.ui.BuildConfig
 import com.vincenthzr.locationspoofer.utils.UpdateManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +19,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import java.util.concurrent.TimeUnit
 
 data class UpdateUiState(
     val isLoading: Boolean = false,
@@ -25,16 +27,24 @@ data class UpdateUiState(
     val releases: List<GithubRelease> = emptyList(),
     val activeDownloadId: Long? = null,
     val activeDownloadUrl: String? = null,
+    val activeDownloadSha256: String? = null,
     val downloadProgress: Int = 0,
     val downloadStatus: Int = DownloadManager.STATUS_PENDING
 )
 
 class UpdateViewModel(private val context: Context) : ViewModel() {
+    private companion object {
+        const val MAX_RELEASE_RESPONSE_BYTES = 5L * 1024L * 1024L
+    }
+
+    private var downloadMonitorJob: Job? = null
     private val _uiState = MutableStateFlow(UpdateUiState())
     val uiState: StateFlow<UpdateUiState> = _uiState.asStateFlow()
 
     private val updateManager = UpdateManager(context)
-    private val okHttpClient = OkHttpClient()
+    private val okHttpClient = OkHttpClient.Builder()
+        .callTimeout(30, TimeUnit.SECONDS)
+        .build()
 
     fun fetchReleases() {
         _uiState.update { it.copy(isLoading = true, error = null) }
@@ -45,12 +55,30 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
                     .header("Accept", "application/vnd.github.v3+json")
                     .build()
 
-                val response = okHttpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    throw Exception("Failed to fetch updates: ${response.code}")
+                val jsonStr = okHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw Exception("Failed to fetch updates: ${response.code}")
+                    }
+                    val body = response.body ?: return@use "[]"
+                    require(body.contentLength() <= MAX_RELEASE_RESPONSE_BYTES || body.contentLength() == -1L) {
+                        "Release metadata exceeds the configured size limit"
+                    }
+                    val output = java.io.ByteArrayOutputStream()
+                    body.byteStream().use { input ->
+                        val buffer = ByteArray(8192)
+                        var total = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= MAX_RELEASE_RESPONSE_BYTES) {
+                                "Release metadata exceeds the configured size limit"
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                    String(output.toByteArray(), Charsets.UTF_8)
                 }
-
-                val jsonStr = response.body?.string() ?: "[]"
                 val jsonArray = JSONArray(jsonStr)
                 val releaseList = mutableListOf<GithubRelease>()
 
@@ -63,6 +91,8 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
 
                     var downloadUrl: String? = null
                     var downloadUrl32Bit: String? = null
+                    var downloadSha256: String? = null
+                    var download32Sha256: String? = null
                     val assets = obj.optJSONArray("assets")
                     if (assets != null) {
                         for (j in 0 until assets.length()) {
@@ -70,15 +100,18 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
                             val assetName = asset.optString("name", "")
                             if (assetName.endsWith(".apk") && isAssetForCurrentScheme(assetName)) {
                                 val url = asset.optString("browser_download_url")
+                                val digest = asset.optString("digest").removePrefix("sha256:")
+                                    .takeIf { it.matches(Regex("[A-Fa-f0-9]{64}")) }
                                 if (assetName.contains("armeabi-v7a") || assetName.contains("32")) {
                                     downloadUrl32Bit = url
+                                    download32Sha256 = digest
                                 } else if (assetName.contains("arm64-v8a")) {
                                     downloadUrl = url
-                                } else {
-                                    // 通用安装包，如果没有专门的64位，就默认用通用包作为主链接
-                                    if (downloadUrl == null) {
-                                        downloadUrl = url
-                                    }
+                                    downloadSha256 = digest
+                                } else if (downloadUrl == null) {
+                                    // 通用 APK 仅作为主链接；必须有 GitHub 提供的 asset digest 才允许安装。
+                                    downloadUrl = url
+                                    downloadSha256 = digest
                                 }
                             }
                         }
@@ -86,6 +119,7 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
 
                     if (downloadUrl == null && downloadUrl32Bit != null) {
                         downloadUrl = downloadUrl32Bit
+                        downloadSha256 = download32Sha256
                     }
 
                     releaseList.add(
@@ -95,7 +129,9 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
                             downloadUrl,
                             downloadUrl32Bit,
                             publishedAt,
-                            isPrerelease
+                            isPrerelease,
+                            downloadSha256,
+                            download32Sha256
                         )
                     )
                 }
@@ -111,32 +147,61 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    fun startDownload(url: String, versionName: String) {
-        val fileName = "LocationSpoofer_$versionName.apk"
-        val downloadId = updateManager.downloadApk(url, fileName)
-        _uiState.update {
-            it.copy(
-                activeDownloadId = downloadId,
-                activeDownloadUrl = url,
-                downloadProgress = 0,
-                downloadStatus = DownloadManager.STATUS_PENDING
-            )
+    fun startDownload(url: String, versionName: String, expectedSha256: String? = null) {
+        val digest = expectedSha256?.removePrefix("sha256:")?.lowercase()
+        if (digest == null || !digest.matches(Regex("[a-f0-9]{64}"))) {
+            _uiState.update { it.copy(error = "Release 未提供有效 SHA-256，已拒绝安装该 APK。") }
+            return
         }
-        monitorDownload(downloadId)
+        try {
+            // A second download replaces the first; cancel its poller and DownloadManager entry.
+            downloadMonitorJob?.cancel()
+            downloadMonitorJob = null
+            _uiState.value.activeDownloadId?.let { previousId ->
+                runCatching { updateManager.cancelDownload(previousId) }
+            }
+            _uiState.update {
+                it.copy(
+                    activeDownloadId = null,
+                    activeDownloadUrl = null,
+                    activeDownloadSha256 = null,
+                    downloadProgress = 0,
+                    downloadStatus = DownloadManager.STATUS_PENDING
+                )
+            }
+            val fileName = "LocationSpoofer_${versionName.replace(Regex("[^A-Za-z0-9._-]"), "_")}.apk"
+            val downloadId = updateManager.downloadApk(url, fileName)
+            _uiState.update {
+                it.copy(
+                    activeDownloadId = downloadId,
+                    activeDownloadUrl = url,
+                    activeDownloadSha256 = digest,
+                    error = null,
+                    downloadProgress = 0,
+                    downloadStatus = DownloadManager.STATUS_PENDING
+                )
+            }
+            monitorDownload(downloadId)
+        } catch (error: Exception) {
+            _uiState.update { it.copy(error = error.message ?: "无法开始下载更新。") }
+        }
     }
 
     private fun monitorDownload(downloadId: Long) {
-        viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
+        downloadMonitorJob?.cancel()
+        downloadMonitorJob = viewModelScope.launch(Dispatchers.IO) {
+            while (_uiState.value.activeDownloadId == downloadId) {
                 val status = updateManager.getDownloadStatus(downloadId)
                 val progress = updateManager.getDownloadProgress(downloadId)
 
                 withContext(Dispatchers.Main) {
-                    _uiState.update {
-                        it.copy(
-                            downloadStatus = status,
-                            downloadProgress = progress
-                        )
+                    if (_uiState.value.activeDownloadId == downloadId) {
+                        _uiState.update {
+                            it.copy(
+                                downloadStatus = status,
+                                downloadProgress = progress
+                            )
+                        }
                     }
                 }
 
@@ -149,18 +214,31 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
     }
 
     fun installApk() {
-        _uiState.value.activeDownloadId?.let { downloadId ->
-            updateManager.installApk(downloadId)
+        val state = _uiState.value
+        val downloadId = state.activeDownloadId ?: return
+        val digest = state.activeDownloadSha256 ?: run {
+            _uiState.update { it.copy(error = "缺少 APK SHA-256，拒绝安装。") }
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                updateManager.installApk(downloadId, digest)
+            } catch (error: Exception) {
+                _uiState.update { it.copy(error = error.message ?: "APK 完整性验证失败，已拒绝安装。") }
+            }
         }
     }
 
     fun cancelDownload() {
+        downloadMonitorJob?.cancel()
+        downloadMonitorJob = null
         _uiState.value.activeDownloadId?.let { downloadId ->
-            updateManager.cancelDownload(downloadId)
+            runCatching { updateManager.cancelDownload(downloadId) }
             _uiState.update {
                 it.copy(
                     activeDownloadId = null,
                     activeDownloadUrl = null,
+                    activeDownloadSha256 = null,
                     downloadProgress = 0,
                     downloadStatus = DownloadManager.STATUS_PENDING
                 )

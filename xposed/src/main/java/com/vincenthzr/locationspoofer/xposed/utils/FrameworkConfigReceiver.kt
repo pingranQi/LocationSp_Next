@@ -30,7 +30,7 @@ internal class FrameworkConfigReceiver(
         // Module lifecycle initialization precedes hook installation. Hook reads remain memory-only.
         refresh()
         // Retry early-boot failures and reconcile the latest snapshot if a notification was missed.
-        executor.scheduleWithFixedDelay({ refresh() }, 1, 1, TimeUnit.SECONDS)
+        executor.scheduleWithFixedDelay({ refresh() }, 5, 5, TimeUnit.SECONDS)
     }
 
     @Synchronized
