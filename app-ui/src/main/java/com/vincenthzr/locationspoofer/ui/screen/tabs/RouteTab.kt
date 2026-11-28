@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.automirrored.rounded.Redo
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -85,6 +86,9 @@ import com.vincenthzr.locationspoofer.viewmodel.toggleMockBluetooth
 import com.vincenthzr.locationspoofer.viewmodel.toggleMockCell
 import com.vincenthzr.locationspoofer.viewmodel.toggleMockWifi
 import com.vincenthzr.locationspoofer.viewmodel.undoLastRoutePoint
+import com.vincenthzr.locationspoofer.viewmodel.redoRouteEdit
+import com.vincenthzr.locationspoofer.viewmodel.removeRoutePoint
+import com.vincenthzr.locationspoofer.viewmodel.moveRoutePoint
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -105,6 +109,8 @@ fun RouteTab(
     var showConfigDialog by remember { mutableStateOf(false) }
     var showSaveRouteDialog by remember { mutableStateOf(false) }
     var showSavedRoutesDialog by remember { mutableStateOf(false) }
+    var showRoutePointEditor by remember { mutableStateOf(false) }
+    val motionState by viewModel.motionController.state.collectAsState()
 
     // 轨迹保存成功后自动打开路线库弹窗（trajectorySavedCounter 由录制页递增）
     LaunchedEffect(uiState.trajectorySavedCounter) {
@@ -409,6 +415,32 @@ fun RouteTab(
                                 )
                             }
 
+                            IconButton(
+                                onClick = { viewModel.redoRouteEdit() },
+                                enabled = uiState.routeRedoHistory.isNotEmpty(),
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Rounded.Redo,
+                                    contentDescription = stringResource(R.string.redo),
+                                    tint = if (uiState.routeRedoHistory.isNotEmpty()) AccentOrange else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { showRoutePointEditor = true },
+                                enabled = routePoints.isNotEmpty(),
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Edit,
+                                    contentDescription = stringResource(R.string.route_edit_points),
+                                    tint = AccentBlue,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
                             // 全部清除 / 重新选点
                             IconButton(
                                 onClick = { viewModel.restartSelectingPoints() },
@@ -495,6 +527,9 @@ fun RouteTab(
                     onStopRoute = {
                         viewModel.stopRoutePlanning()
                     },
+                    isPlaybackPaused = motionState.paused,
+                    onPausePlayback = { viewModel.motionController.pause() },
+                    onResumePlayback = { viewModel.motionController.resume() },
                     searchBar = if (stage == RoutePlanStage.IDLE || stage == RoutePlanStage.SELECTING) {
                         { barModifier ->
                             if (!searchActive) {
@@ -681,6 +716,15 @@ fun RouteTab(
             routePoints = routePoints,
             viewModel = viewModel,
             onDismiss = { showSaveRouteDialog = false }
+        )
+    }
+
+    if (showRoutePointEditor) {
+        RoutePointEditorDialog(
+            points = routePoints,
+            onDismiss = { showRoutePointEditor = false },
+            onMove = viewModel::moveRoutePoint,
+            onRemove = viewModel::removeRoutePoint
         )
     }
 
