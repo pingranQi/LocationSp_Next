@@ -211,25 +211,12 @@ fun SavedRoutesDialog(
                     }
                 }
 
-                Row(
+                OutlinedButton(
+                    onClick = { importLauncher.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml")) },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = { importLauncher.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml")) },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(stringResource(R.string.gpx_import), fontSize = 13.sp)
-                    }
-                    OutlinedButton(
-                        onClick = { Toast.makeText(context, context.getString(R.string.gpx_export_hint), Toast.LENGTH_SHORT).show() },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = uiState.savedRoutes.isNotEmpty()
-                    ) {
-                        Text(stringResource(R.string.gpx_export_hint), fontSize = 13.sp)
-                    }
+                    Text(stringResource(R.string.gpx_import), fontSize = 13.sp)
                 }
 
                 if (uiState.savedRoutes.isEmpty()) {
