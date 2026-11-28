@@ -171,6 +171,7 @@ class LocationHooker : XposedModule() {
                 capturedBaiduListeners.toTypedArray(), capturedTencentListeners.toTypedArray(),
                 capturedFusedLocationCallbacks.toTypedArray(), bleScanTimers.keys.toTypedArray()
             ),
+            "ble_report_delays" to bleScanReportDelayMillis.toMap(),
             "system_location" to saveSystemLocationReloadState(),
             "system_ble" to saveSystemBleReloadState(),
             "sensor" to SensorStepHooker.saveReloadState()
@@ -204,6 +205,7 @@ class LocationHooker : XposedModule() {
         nmeaTimers.clear()
         bleScanTimers.values.forEach { it.cancel() }
         bleScanTimers.clear()
+        bleScanReportDelayMillis.clear()
         clearSystemLocationReloadState()
         clearSystemBleReloadState()
         SensorStepHooker.clearReloadState()
@@ -238,10 +240,14 @@ class LocationHooker : XposedModule() {
                 restoreSystemLocationReloadState(state?.get("system_location"))
                 restoreSystemBleReloadState(state?.get("system_ble"))
                 SensorStepHooker.restoreReloadState(state?.get("sensor"))
+                val savedBleDelays = state?.get("ble_report_delays") as? Map<*, *>
                 (callbacks?.getOrNull(5) as? Array<*>)?.filterNotNull()?.forEach { callback ->
                     if (hasTypeByName(callback.javaClass, "android.bluetooth.BluetoothAdapter\$LeScanCallback")) {
                         startOldLeScanTimer(callback, host.classLoader)
-                    } else startBleTimer(callback, host.classLoader)
+                    } else {
+                        val reportDelay = (savedBleDelays?.get(callback) as? Number)?.toLong() ?: 0L
+                        startBleTimer(callback, host.classLoader, reportDelay)
+                    }
                 }
                 android.util.Log.i("LocationSpoofer", "[HotReload] Reinstalled hooks in ${param.processName}; generation=${HookStatus.generationId}")
             }
