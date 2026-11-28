@@ -90,6 +90,7 @@ import com.vincenthzr.locationspoofer.viewmodel.redoRouteEdit
 import com.vincenthzr.locationspoofer.viewmodel.removeRoutePoint
 import com.vincenthzr.locationspoofer.viewmodel.moveRoutePoint
 import com.vincenthzr.locationspoofer.viewmodel.setRoutePointWait
+import com.vincenthzr.locationspoofer.viewmodel.simplifyRoute
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -741,7 +742,8 @@ fun RouteTab(
             onDismiss = { showRoutePointEditor = false },
             onMove = viewModel::moveRoutePoint,
             onRemove = viewModel::removeRoutePoint,
-            onWaitChange = viewModel::setRoutePointWait
+            onWaitChange = viewModel::setRoutePointWait,
+            onSimplify = { viewModel.simplifyRoute(5.0) }
         )
     }
 
