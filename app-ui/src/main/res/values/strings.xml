@@ -699,4 +699,12 @@ Error details: %s</string>
     <string name="paste_coordinates">Paste coordinates</string>
     <string name="coordinate_paste_success">Coordinates imported</string>
     <string name="coordinate_paste_invalid">Clipboard does not contain a supported coordinate</string>
+    <string name="gpx_import">Import GPX</string>
+    <string name="gpx_export_hint">Export from route item</string>
+    <string name="gpx_export">Export GPX</string>
+    <string name="gpx_import_success">Imported %1$d route(s)</string>
+    <string name="gpx_export_success">GPX exported</string>
+    <string name="gpx_operation_failed">GPX operation failed. Check that the file is valid and accessible.</string>
+    <string name="gpx_route_too_short">A route needs at least two points to export</string>
+    <string name="imported_gpx_route">Imported GPX route</string>
 </resources>
