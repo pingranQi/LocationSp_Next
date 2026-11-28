@@ -532,4 +532,22 @@
     <string name="scenario_import_success">تم استيراد السيناريو وحفظه في مكتبة المسارات</string>
     <string name="scenario_export_success">تم تصدير السيناريو</string>
     <string name="scenario_operation_failed">فشلت عملية السيناريو. تحقق من تنسيق الملف ومحتوياته.</string>
+    <string name="route_diagnostics">تشخيص المسار</string>
+    <string name="route_diagnostics_desc">حالة مباشرة وفحوصات اتساق المسار</string>
+    <string name="route_diag_simulation">محاكاة الموقع</string>
+    <string name="route_diag_motion">حالة الحركة</string>
+    <string name="route_diag_waypoints">النقاط الوسيطة</string>
+    <string name="route_diag_distance">مسافة المسار</string>
+    <string name="route_diag_speed">السرعة الحالية</string>
+    <string name="route_diag_location">الإحداثيات الحالية</string>
+    <string name="route_diag_mock_wifi">محاكاة بيئة Wi-Fi</string>
+    <string name="route_diag_mock_cell">محاكاة الشبكة الخلوية</string>
+    <string name="route_diag_mock_bluetooth">محاكاة Bluetooth</string>
+    <string name="route_diag_fetching">جارٍ طلب المسار من المزود.</string>
+    <string name="route_diag_need_points">أضف نقطتين وسيطتين على الأقل قبل البدء.</string>
+    <string name="route_diag_zero_length">لا توجد مسافة قابلة للقياس بين نقاط المسار.</string>
+    <string name="route_diag_active">نشط</string>
+    <string name="route_diag_inactive">غير نشط</string>
+    <string name="route_diag_enabled">مفعل</string>
+    <string name="route_diag_disabled">معطل</string>
 </resources>
