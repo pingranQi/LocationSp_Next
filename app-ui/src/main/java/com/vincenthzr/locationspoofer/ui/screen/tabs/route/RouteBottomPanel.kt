@@ -10,7 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +41,8 @@ fun RouteBottomPanel(
     isPlaybackPaused: Boolean = false,
     onPausePlayback: () -> Unit = {},
     onResumePlayback: () -> Unit = {},
+    playbackProgress: Float = 0f,
+    onSeekPlayback: (Float) -> Unit = {},
     searchBar: (@Composable (Modifier) -> Unit)? = null
 ) {
     Box(
@@ -203,11 +205,38 @@ fun RouteBottomPanel(
                         }
 
                         RoutePlanStage.RUNNING -> {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            var seekValue by remember { mutableFloatStateOf(playbackProgress) }
+                            var isSeeking by remember { mutableStateOf(false) }
+                            LaunchedEffect(playbackProgress) {
+                                if (!isSeeking) seekValue = playbackProgress
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (uiState.routeRunMode == RouteRunMode.LOOP) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(stringResource(R.string.route_playback_progress), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text((seekValue * 100).toInt().toString() + "%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Slider(
+                                        value = seekValue,
+                                        onValueChange = {
+                                            seekValue = it
+                                            isSeeking = true
+                                        },
+                                        onValueChangeFinished = {
+                                            isSeeking = false
+                                            onSeekPlayback(seekValue)
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.padding(start = 6.dp)
