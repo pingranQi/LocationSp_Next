@@ -52,6 +52,10 @@ object RoutePointJsonCodec {
             require(elevation == null || elevation.isFinite()) {
                 "Route elevation is invalid"
             }
+            val timestamp = point.timestampEpochMillis
+            require(timestamp == null || timestamp >= 0L) {
+                "Route timestamp is invalid"
+            }
         }
     }
 }
