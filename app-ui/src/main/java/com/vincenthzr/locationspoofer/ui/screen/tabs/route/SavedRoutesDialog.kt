@@ -228,9 +228,18 @@ fun SavedRoutesDialog(
                             }
                         }
                         require(imported.isNotEmpty()) { "No route with at least two points was found" }
-                        imported.forEach { (name, points) ->
-                            viewModel.saveRoute(name, points.map { RoutePoint(it.latitude, it.longitude, elevationMeters = it.elevationMeters, timestampEpochMillis = it.time?.toEpochMilli()) })
-                        }
+                        viewModel.saveRoutes(
+                            imported.map { (name, points) ->
+                                name to points.map { point ->
+                                    RoutePoint(
+                                        point.latitude,
+                                        point.longitude,
+                                        elevationMeters = point.elevationMeters,
+                                        timestampEpochMillis = point.time?.toEpochMilli()
+                                    )
+                                }
+                            }
+                        )
                         imported.size
                     }
                 }
