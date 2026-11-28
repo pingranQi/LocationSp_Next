@@ -265,6 +265,33 @@ class MotionControllerTest {
     }
 
     @Test
+    fun `route playback stops at waypoint dwell and resumes afterwards`() {
+        val middle = GeoMath.destination(start, 90.0, 500.0)
+        val finish = GeoMath.destination(start, 90.0, 1000.0)
+        controller.onRouteStarted(
+            listOf(
+                RoutePoint(start.lat, start.lng),
+                RoutePoint(middle.lat, middle.lng, waitSec = 10.0),
+                RoutePoint(finish.lat, finish.lng)
+            ),
+            walking,
+            stopAtDestination = false,
+            startTimestamp = now
+        )
+        controller.tick(now)
+
+        advance(255_000)
+        assertEquals(500.0, GeoMath.distance(start, here()), 0.5)
+        assertEquals(0.0, controller.state.value.speedMs, 1e-6)
+
+        advance(5_000)
+        assertEquals(500.0, GeoMath.distance(start, here()), 0.5)
+        advance(5_000)
+        assertEquals(510.0, GeoMath.distance(start, here()), 0.5)
+        assertTrue(controller.state.value.speedMs > 0.0)
+    }
+
+    @Test
     fun `seeking jumps to a deterministic route fraction and continues from there`() {
         startRoute()
         controller.seekToProgress(0.25f)
