@@ -33,7 +33,8 @@ fun RoutePointEditorDialog(
     onDismiss: () -> Unit,
     onMove: (Int, Int) -> Unit,
     onRemove: (Int) -> Unit,
-    onWaitChange: (Int, Double) -> Unit
+    onWaitChange: (Int, Double) -> Unit,
+    onSimplify: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -89,8 +90,13 @@ fun RoutePointEditorDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.done))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onSimplify, enabled = points.size > 2) {
+                    Text(stringResource(R.string.route_simplify))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.done))
+                }
             }
         }
     )
