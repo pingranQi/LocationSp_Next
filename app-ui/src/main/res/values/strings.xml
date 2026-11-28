@@ -715,4 +715,9 @@ Error details: %s</string>
     <string name="remove_waypoint">Remove waypoint</string>
     <string name="route_pause">Pause</string>
     <string name="route_resume">Resume</string>
+    <string name="scenario_import">Import scenario</string>
+    <string name="scenario_export">Export scenario</string>
+    <string name="scenario_import_success">Scenario imported and saved to route library</string>
+    <string name="scenario_export_success">Scenario exported</string>
+    <string name="scenario_operation_failed">Scenario operation failed. Check the file format and contents.</string>
 </resources>
