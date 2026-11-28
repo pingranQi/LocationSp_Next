@@ -12,6 +12,7 @@ import com.vincenthzr.locationspoofer.data.model.RootSolution
 import com.vincenthzr.locationspoofer.data.model.RoutePoint
 import com.vincenthzr.locationspoofer.data.state.SpoofingState
 import com.vincenthzr.locationspoofer.utils.ConfigManager
+import com.vincenthzr.locationspoofer.utils.RoutePointJsonCodec
 import com.vincenthzr.locationspoofer.utils.LSPosedManager
 import com.vincenthzr.locationspoofer.utils.RootManager
 import com.vincenthzr.locationspoofer.utils.SettingsManager
@@ -298,16 +299,8 @@ class LocationRepository(
         )
     }
 
-    private fun routePointsToJson(points: List<RoutePoint>): String {
-        val arr = JSONArray()
-        points.forEach { p ->
-            arr.put(JSONObject().apply {
-                put("lat", p.lat)
-                put("lng", p.lng)
-            })
-        }
-        return arr.toString()
-    }
+    private fun routePointsToJson(points: List<RoutePoint>): String =
+        RoutePointJsonCodec.encode(points)
 
     fun getSavedRoutes(): kotlinx.coroutines.flow.Flow<List<SavedRouteEntity>> {
         return savedRouteDao.getAllSavedRoutes()
