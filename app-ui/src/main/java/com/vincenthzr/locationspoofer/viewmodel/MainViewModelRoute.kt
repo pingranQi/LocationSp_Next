@@ -48,7 +48,8 @@ internal fun MainViewModel.restoreRouteDraft() {
                 require(point.lat.isFinite() && point.lat in -90.0..90.0)
                 require(point.lng.isFinite() && point.lng in -180.0..180.0)
                 require(point.waitSec.isFinite() && point.waitSec in 0.0..86_400.0)
-                require(point.elevationMeters == null || point.elevationMeters.isFinite())
+                val elevation = point.elevationMeters
+                require(elevation == null || elevation.isFinite())
             }
         }
     }.getOrElse {
