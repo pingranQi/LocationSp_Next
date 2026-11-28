@@ -233,10 +233,9 @@ internal suspend fun MainViewModel.saveRoutes(routes: List<Pair<String, List<Rou
 
 internal fun MainViewModel.deleteSavedRoute(route: com.vincenthzr.locationspoofer.data.model.SavedRoute) {
     viewModelScope.launch(Dispatchers.IO) {
-        // 我们通过寻找匹配名称的实体进行删除
-        // （有点取巧，但目前有效，或者我们可以在 DAO 中添加按名称删除的功能）
+        // Prefer the stable Room ID so duplicate route names remain independently deletable.
         val routes = locationRepository.getSavedRoutes().first()
-        val entity = routes.find { it.name == route.name }
+        val entity = routes.find { if (route.id > 0L) it.id == route.id else it.name == route.name }
         if (entity != null) {
             locationRepository.deleteSavedRoute(entity)
         }
