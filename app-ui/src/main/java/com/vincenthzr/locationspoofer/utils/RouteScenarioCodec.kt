@@ -45,7 +45,14 @@ object RouteScenarioCodec {
         val paceVariationSec: Int = 0,
         val fatigueLevel: Int = 0,
         val firstKmBiasSec: Int = 0,
-        val fatigueStartKm: String = "2.0"
+        val fatigueStartKm: String = "2.0",
+        val mockWifi: Boolean = true,
+        val mockCell: Boolean = true,
+        val mockBluetooth: Boolean = true,
+        val enableJitter: Boolean = true,
+        val altitudeInput: String = "0.0",
+        val altitudeVariationM: Int = 10,
+        val satelliteCountInput: String = "20"
     )
 
     data class Scenario(
@@ -85,7 +92,14 @@ object RouteScenarioCodec {
             paceVariationSec = scenario.paceVariationSec,
             fatigueLevel = scenario.fatigueLevel,
             firstKmBiasSec = scenario.firstKmBiasSec,
-            fatigueStartKm = scenario.fatigueStartKm
+            fatigueStartKm = scenario.fatigueStartKm,
+            mockWifi = scenario.mockWifi,
+            mockCell = scenario.mockCell,
+            mockBluetooth = scenario.mockBluetooth,
+            enableJitter = scenario.enableJitter,
+            altitudeInput = scenario.altitudeInput,
+            altitudeVariationM = scenario.altitudeVariationM,
+            satelliteCountInput = scenario.satelliteCountInput
         )
         return json.encodeToString(payload)
     }
@@ -111,7 +125,14 @@ object RouteScenarioCodec {
             paceVariationSec = payload.paceVariationSec,
             fatigueLevel = payload.fatigueLevel,
             firstKmBiasSec = payload.firstKmBiasSec,
-            fatigueStartKm = payload.fatigueStartKm
+            fatigueStartKm = payload.fatigueStartKm,
+            mockWifi = payload.mockWifi,
+            mockCell = payload.mockCell,
+            mockBluetooth = payload.mockBluetooth,
+            enableJitter = payload.enableJitter,
+            altitudeInput = payload.altitudeInput,
+            altitudeVariationM = payload.altitudeVariationM,
+            satelliteCountInput = payload.satelliteCountInput
         )
         validate(scenario)
         return scenario
@@ -137,5 +158,10 @@ object RouteScenarioCodec {
         require(fatigueStart != null && fatigueStart.isFinite() && fatigueStart in 0.0..42.0) {
             "Fatigue start distance is invalid"
         }
+        val altitude = scenario.altitudeInput.toDoubleOrNull()
+        require(altitude != null && altitude.isFinite() && altitude in -500.0..10_000.0) { "Altitude is invalid" }
+        require(scenario.altitudeVariationM in 0..100) { "Altitude variation is out of range" }
+        val satellites = scenario.satelliteCountInput.toIntOrNull()
+        require(satellites != null && satellites in 0..80) { "Satellite count is invalid" }
     }
 }
