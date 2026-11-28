@@ -554,4 +554,8 @@
     <string name="route_waypoint_wait">توقف: %1$d ثانية</string>
     <string name="reduce_wait">تقليل مدة التوقف</string>
     <string name="increase_wait">زيادة مدة التوقف</string>
+    <string name="route_diag_paused">متوقف مؤقتًا</string>
+    <string name="route_diag_playing">قيد التشغيل</string>
+    <string name="route_diag_available">متاح</string>
+    <string name="route_diag_unavailable">غير متاح</string>
 </resources>
