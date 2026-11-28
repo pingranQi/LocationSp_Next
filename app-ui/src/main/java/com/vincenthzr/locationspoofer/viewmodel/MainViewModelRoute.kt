@@ -50,6 +50,8 @@ internal fun MainViewModel.restoreRouteDraft() {
                 require(point.waitSec.isFinite() && point.waitSec in 0.0..86_400.0)
                 val elevation = point.elevationMeters
                 require(elevation == null || elevation.isFinite())
+                val timestamp = point.timestampEpochMillis
+                require(timestamp == null || timestamp >= 0L)
             }
         }
     }.getOrElse {
