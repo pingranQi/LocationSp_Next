@@ -212,6 +212,11 @@ class SettingsManager(context: Context) {
         get() = prefs.getFloat("route_custom_speed_ms", 3.0f)
         set(value) = prefs.edit().putFloat("route_custom_speed_ms", value.coerceIn(0.1f, 100.0f)).apply()
 
+    /** Autosaved route draft. Empty means there is no unfinished draft. */
+    var routeDraftJson: String
+        get() = prefs.getString("route_draft_json", "") ?: ""
+        set(value) = prefs.edit().putString("route_draft_json", value).apply()
+
     /** 打开 App 时地图停留在上次选定的位置，而不是自动跳到真实位置 */
     var keepLastMapPosition: Boolean
         get() = prefs.getBoolean("keep_last_map_position", true)
