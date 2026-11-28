@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import com.vincenthzr.locationspoofer.utils.RouteSimplifier
 
 // MainViewModel 的路线规划、收藏位置/路线与自动巡航相关扩展函数
 
@@ -175,6 +176,16 @@ internal fun MainViewModel.setRoutePointWait(index: Int, waitSeconds: Double) {
             points[index] = points[index].copy(waitSec = waitSeconds.coerceIn(0.0, 86_400.0))
             state.withRouteEdit(points)
         }
+    }
+    persistRouteDraft()
+}
+
+internal fun MainViewModel.simplifyRoute(toleranceMeters: Double = 5.0) {
+    if (!toleranceMeters.isFinite() || toleranceMeters < 0.0) return
+    _uiState.update { state ->
+        val simplified = RouteSimplifier.simplify(state.routePoints, toleranceMeters)
+        if (simplified.size < 2 || simplified == state.routePoints) state
+        else state.withRouteEdit(simplified)
     }
     persistRouteDraft()
 }
