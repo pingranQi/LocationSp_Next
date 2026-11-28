@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# Push and pull_request events can target the same commit. Keep only the newest
+# verification run for a branch to avoid wasting runners on superseded commits.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
