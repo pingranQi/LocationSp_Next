@@ -4,7 +4,10 @@ import android.util.Log
 import com.vincenthzr.locationspoofer.data.model.RootSetupTestResult
 import com.vincenthzr.locationspoofer.data.model.RootSolution
 import java.io.IOException
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -14,6 +17,7 @@ class RootManager {
         private const val TAG = "LocationSpoofer"
         private const val COMMAND_TIMEOUT_SECONDS = 15L
         private const val MAX_OUTPUT_CHARS = 64 * 1024
+        private const val PROCESS_GROUP_MARKER = "__LOCATIONSP_ROOT_PGID__"
         private val PACKAGE_NAME_PATTERN = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
 
         private fun isValidPackageName(packageName: String): Boolean =
@@ -23,7 +27,12 @@ class RootManager {
     suspend fun checkRootAccess(solution: RootSolution = RootSolution.AUTO): Boolean =
         withContext(Dispatchers.IO) {
             val hasRoot = executeCommand("id").contains("uid=0(root)")
-            if (hasRoot) applyRootBackgroundExemptions()
+            if (hasRoot) {
+                if (executeCommand("chmod 771 /data/local/tmp") == "ERROR") {
+                    Log.w(TAG, "Failed to set /data/local/tmp permissions to 771")
+                }
+                applyRootBackgroundExemptions()
+            }
             hasRoot
         }
 
@@ -99,33 +108,78 @@ class RootManager {
 
     fun executeCommandWithInput(command: String, input: String): String = runCommand(command, input)
 
+    private fun shellQuote(value: String): String =
+        "'" + value.replace("'", "'\\''") + "'"
+
+    /**
+     * Execute in a dedicated session so timeout cleanup can kill the whole process group,
+     * including shells and commands spawned by su -c.
+     */
+    private fun buildSessionCommand(command: String): String {
+        val launcher = "printf '$PROCESS_GROUP_MARKER%s\\n' \"\$\$\"; exec sh -c \"\$1\""
+        return "setsid sh -c \${shellQuote(launcher)} sh \${shellQuote(command)}"
+    }
+
+    private fun terminateProcessGroup(processGroupId: Long) {
+        if (processGroupId <= 1L) return
+        val killCommand =
+            "kill -TERM -- -$processGroupId 2>/dev/null || true; " +
+                "sleep 0.2; kill -KILL -- -$processGroupId 2>/dev/null || true"
+        val killer = try {
+            ProcessBuilder("su", "-c", killCommand).redirectErrorStream(true).start()
+        } catch (error: Exception) {
+            Log.w(TAG, "Unable to start root process-group cleanup", error)
+            return
+        }
+        try {
+            if (!killer.waitFor(2, TimeUnit.SECONDS)) killer.destroyForcibly()
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
+            killer.destroyForcibly()
+        } finally {
+            try {
+                killer.inputStream.close()
+                killer.outputStream.close()
+                killer.errorStream.close()
+            } catch (_: IOException) {}
+        }
+    }
+
     private fun runCommand(command: String, input: String?): String {
         var process: Process? = null
         var reader: Thread? = null
         var writer: Thread? = null
+        val processGroupId = AtomicLong(-1L)
         val output = StringBuilder()
         return try {
-            process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
+            process = ProcessBuilder("su", "-c", buildSessionCommand(command))
+                .redirectErrorStream(true)
+                .start()
             val activeProcess = process
 
-            // Always drain stdout/stderr; retain only a bounded prefix to avoid memory exhaustion.
+            // Consume the session marker internally and retain only bounded command output.
             reader = Thread({
                 try {
-                    activeProcess.inputStream.use { stream ->
-                        val buffer = ByteArray(4096)
+                    BufferedReader(InputStreamReader(activeProcess.inputStream, Charsets.UTF_8)).use { stream ->
                         while (true) {
-                            val count = stream.read(buffer)
-                            if (count < 0) break
+                            val line = stream.readLine() ?: break
+                            if (line.startsWith(PROCESS_GROUP_MARKER)) {
+                                line.removePrefix(PROCESS_GROUP_MARKER).toLongOrNull()
+                                    ?.takeIf { it > 1L }
+                                    ?.let(processGroupId::set)
+                                continue
+                            }
                             synchronized(output) {
                                 val remaining = MAX_OUTPUT_CHARS - output.length
                                 if (remaining > 0) {
-                                    output.append(String(buffer, 0, minOf(count, remaining), Charsets.UTF_8))
+                                    output.append(line.take(remaining))
+                                    if (output.length < MAX_OUTPUT_CHARS) output.append('\n')
                                 }
                             }
                         }
                     }
                 } catch (_: IOException) {
-                    // Process termination closes the stream; this is expected on timeout.
+                    // Stream closure after timeout is expected.
                 }
             }, "LocationSp-root-output").apply {
                 isDaemon = true
@@ -145,19 +199,30 @@ class RootManager {
                 start()
             }
 
-            val completed = activeProcess.waitFor(COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            if (!completed) {
-                Log.e(TAG, "Root command timed out after ${COMMAND_TIMEOUT_SECONDS}s")
+            if (!activeProcess.waitFor(COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                Log.e(TAG, "Root command timed out after \${COMMAND_TIMEOUT_SECONDS}s")
+                reader.join(250)
+                val pgid = processGroupId.get()
+                if (pgid > 1L) terminateProcessGroup(pgid)
+                else Log.w(TAG, "Root session id was not captured; only the su process can be terminated")
                 activeProcess.destroy()
-                if (!activeProcess.waitFor(500, TimeUnit.MILLISECONDS)) activeProcess.destroyForcibly()
+                if (!activeProcess.waitFor(500, TimeUnit.MILLISECONDS)) {
+                    activeProcess.destroyForcibly()
+                    activeProcess.waitFor(500, TimeUnit.MILLISECONDS)
+                }
                 return "ERROR"
             }
 
             writer.join(1000)
             reader.join(2000)
+            // A daemonized child retaining stdout is a leaked command; terminate its session.
+            if (reader.isAlive) {
+                terminateProcessGroup(processGroupId.get())
+                reader.join(500)
+            }
             val result = synchronized(output) { output.toString() }
             if (activeProcess.exitValue() == 0) result.ifEmpty { "SUCCESS" } else {
-                Log.e(TAG, "Root command failed (${activeProcess.exitValue()}): ${result.take(2000)}")
+                Log.e(TAG, "Root command failed (\${activeProcess.exitValue()}): \${result.take(2000)}")
                 "ERROR"
             }
         } catch (error: Exception) {
@@ -165,13 +230,15 @@ class RootManager {
             Log.e(TAG, "Root command failed", error)
             "ERROR"
         } finally {
+            if (process?.isAlive == true) {
+                terminateProcessGroup(processGroupId.get())
+                process.destroyForcibly()
+            }
             try {
                 process?.outputStream?.close()
                 process?.inputStream?.close()
-            } catch (_: IOException) {
-                // Best-effort stream cleanup.
-            }
-            process?.destroy()
+                process?.errorStream?.close()
+            } catch (_: IOException) {}
             reader?.join(250)
             writer?.join(250)
         }
