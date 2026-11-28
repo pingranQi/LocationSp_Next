@@ -715,4 +715,9 @@
     <string name="remove_waypoint">删除路点</string>
     <string name="route_pause">暂停</string>
     <string name="route_resume">继续</string>
+    <string name="scenario_import">导入场景</string>
+    <string name="scenario_export">导出场景</string>
+    <string name="scenario_import_success">场景已导入并保存到路线库</string>
+    <string name="scenario_export_success">场景已导出</string>
+    <string name="scenario_operation_failed">场景操作失败，请检查文件格式和内容</string>
 </resources>
