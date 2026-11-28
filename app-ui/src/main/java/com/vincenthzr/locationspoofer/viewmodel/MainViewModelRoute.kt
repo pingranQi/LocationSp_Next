@@ -226,6 +226,11 @@ internal fun MainViewModel.saveRoute(name: String, points: List<RoutePoint>) {
     }
 }
 
+/** Persist an imported group as one all-or-nothing route-library operation. */
+internal suspend fun MainViewModel.saveRoutes(routes: List<Pair<String, List<RoutePoint>>>) {
+    locationRepository.insertSavedRoutes(routes)
+}
+
 internal fun MainViewModel.deleteSavedRoute(route: com.vincenthzr.locationspoofer.data.model.SavedRoute) {
     viewModelScope.launch(Dispatchers.IO) {
         // 我们通过寻找匹配名称的实体进行删除
