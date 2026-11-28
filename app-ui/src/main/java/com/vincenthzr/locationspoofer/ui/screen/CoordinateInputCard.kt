@@ -1,5 +1,9 @@
 package com.vincenthzr.locationspoofer.ui.screen
 
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -15,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,6 +31,9 @@ import com.vincenthzr.locationspoofer.ui.theme.AppColors
 import com.vincenthzr.locationspoofer.ui.theme.noRippleClickable
 import com.vincenthzr.locationspoofer.viewmodel.MainViewModel
 import com.vincenthzr.locationspoofer.viewmodel.clearPinnedCollectedLocation
+import com.vincenthzr.locationspoofer.viewmodel.updateLatitude
+import com.vincenthzr.locationspoofer.viewmodel.updateLongitude
+import com.vincenthzr.locationspoofer.utils.CoordinateInputParser
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 
 
@@ -39,6 +47,7 @@ fun CoordinateInputCard(
     onCustomClick: () -> Unit
 ) {
     val textSecondary = AppColors.textSecondary(isDark)
+    val context = LocalContext.current
 
     MiuixCard(
         modifier = Modifier.fillMaxWidth(),
@@ -53,6 +62,38 @@ fun CoordinateInputCard(
                     isDark
                 )
                 Spacer(Modifier.weight(1f))
+                IconButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val pastedText = clipboard?.primaryClip
+                            ?.takeIf { it.itemCount > 0 }
+                            ?.getItemAt(0)
+                            ?.coerceToText(context)
+                            ?.toString()
+                        val parsed = pastedText?.let(CoordinateInputParser::parse)
+                        if (parsed != null) {
+                            viewModel.updateLatitude(parsed.latitude.toString())
+                            viewModel.updateLongitude(parsed.longitude.toString())
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.coordinate_paste_success),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.coordinate_paste_invalid),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                ) {
+                    Icon(
+                        Icons.Outlined.ContentPaste,
+                        contentDescription = stringResource(R.string.paste_coordinates),
+                        tint = AccentBlue
+                    )
+                }
                 TextButton(
                     onClick = onCustomClick,
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
