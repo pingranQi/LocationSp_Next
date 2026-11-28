@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -55,7 +56,7 @@ fun RouteDiagnosticsDialog(
                     Text(stringResource(R.string.route_diag_elevation_profile), style = MaterialTheme.typography.labelMedium)
                     RouteElevationProfile(elevations)
                     Text(
-                        String.format(java.util.Locale.US, "%.1f–%.1f m", elevations.minOrNull(), elevations.maxOrNull()),
+                        String.format(java.util.Locale.US, "%.1f–%.1f m", elevations.minOrNull() ?: 0.0, elevations.maxOrNull() ?: 0.0),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
