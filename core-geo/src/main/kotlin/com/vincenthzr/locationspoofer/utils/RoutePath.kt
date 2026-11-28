@@ -104,11 +104,6 @@ class RoutePath(points: List<LatLng>) {
         return segment.coerceAtMost(points.size - 2)
     }
 
-    private fun interpolateLongitude(from: Double, to: Double, ratio: Double): Double {
-        val delta = ((to - from + 540.0) % 360.0) - 180.0
-        return ((from + delta * ratio + 540.0) % 360.0) - 180.0
-    }
-
     fun positionAt(distanceTraveled: Double, stopAtDestination: Boolean): Position {
         require(distanceTraveled.isFinite()) { "distance traveled must be finite" }
         require(isValid) { "route needs at least two distinct points" }
@@ -136,11 +131,15 @@ class RoutePath(points: List<LatLng>) {
         val to = points[seg + 1]
         val segLen = (cumulative[seg + 1] - cumulative[seg]).coerceAtLeast(0.0001)
         val ratio = ((along - cumulative[seg]) / segLen).coerceIn(0.0, 1.0)
-        val bearing = if (forward) GeoMath.bearing(from, to) else GeoMath.bearing(to, from)
+        val segmentBearing = GeoMath.bearing(from, to)
+        val movementBearing = if (forward) segmentBearing else GeoMath.bearing(to, from)
+        // Interpolate along the same great-circle arc used by distance/bearing math.
+        // Linear latitude/longitude interpolation visibly drifts at high latitudes.
+        val position = GeoMath.destination(from, segmentBearing.toDouble(), segLen * ratio)
         return Position(
-            from.lat + (to.lat - from.lat) * ratio,
-            interpolateLongitude(from.lng, to.lng, ratio),
-            bearing,
+            position.lat,
+            position.lng,
+            movementBearing,
             arrived = false
         )
     }
