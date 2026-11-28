@@ -62,7 +62,15 @@ object GeoMath {
  * stopAtDestination 为真时走到终点就停下。
  */
 class RoutePath(points: List<LatLng>) {
+    /** Immutable snapshot: callers may safely reuse or mutate their source collection. */
     val points: List<LatLng> = points.toList()
+
+    init {
+        require(this.points.all { point ->
+            point.lat.isFinite() && point.lng.isFinite() &&
+                point.lat in -90.0..90.0 && point.lng in -180.0..180.0
+        }) { "route points must contain finite, in-range coordinates" }
+    }
 
     data class Position(val lat: Double, val lng: Double, val bearing: Float, val arrived: Boolean)
 
@@ -73,6 +81,28 @@ class RoutePath(points: List<LatLng>) {
     val totalDistance: Double = if (points.isEmpty()) 0.0 else cumulative.last()
     val isClosedLoop: Boolean = points.size >= 2 && GeoMath.distance(points.first(), points.last()) <= 5.0
     val isValid: Boolean get() = points.size >= 2 && totalDistance > 0.0
+
+    /**
+     * Find the segment containing [along] in O(log n), then skip any zero-length
+     * segments at the same cumulative distance. This matters for recorded tracks
+     * that can contain repeated fixes while the device is stationary.
+     */
+    private fun segmentIndex(along: Double): Int {
+        var low = 0
+        var high = cumulative.lastIndex
+        while (low < high) {
+            val middle = (low + high) ushr 1
+            if (cumulative[middle] < along) low = middle + 1 else high = middle
+        }
+
+        var segment = (low - 1).coerceAtLeast(0)
+        while (segment < points.size - 2 &&
+            cumulative[segment + 1] <= cumulative[segment]
+        ) {
+            segment++
+        }
+        return segment.coerceAtMost(points.size - 2)
+    }
 
     private fun interpolateLongitude(from: Double, to: Double, ratio: Double): Double {
         val delta = ((to - from + 540.0) % 360.0) - 180.0
@@ -101,8 +131,7 @@ class RoutePath(points: List<LatLng>) {
             along = if (forward) inCycle else cycle - inCycle
         }
 
-        var seg = 0
-        while (seg < points.size - 2 && cumulative[seg + 1] < along) seg++
+        val seg = segmentIndex(along)
         val from = points[seg]
         val to = points[seg + 1]
         val segLen = (cumulative[seg + 1] - cumulative[seg]).coerceAtLeast(0.0001)
