@@ -746,4 +746,8 @@
     <string name="route_diag_playing">播放中</string>
     <string name="route_diag_available">可用</string>
     <string name="route_diag_unavailable">不可用</string>
+    <string name="route_diag_update_interval">更新间隔</string>
+    <string name="route_diag_route_deviation">界面与运动位置偏差</string>
+    <string name="route_diag_root_access">Root 权限</string>
+    <string name="route_diag_xposed">LSPosed 状态</string>
 </resources>
