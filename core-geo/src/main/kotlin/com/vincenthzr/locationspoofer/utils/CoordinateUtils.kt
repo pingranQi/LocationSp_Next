@@ -14,6 +14,8 @@ object CoordinateUtils {
     private const val A = 6378245.0           // 克拉索夫斯基椭球体长半轴
     private const val EE = 0.00669342162296594 // 偏心率平方
     private const val BD_PI = PI * 3000.0 / 180.0
+    private const val MAX_INVERSE_ITERATIONS = 20
+    private const val INVERSE_EPSILON_DEGREES = 1e-10
 
     data class LatLng(val lat: Double, val lng: Double)
 
@@ -21,6 +23,7 @@ object CoordinateUtils {
      * WGS-84 → GCJ-02（正向加偏）
      */
     fun wgs84ToGcj02(wgsLat: Double, wgsLng: Double): LatLng {
+        requireValidCoordinate(wgsLat, wgsLng, "WGS-84")
         if (outOfChina(wgsLat, wgsLng)) return LatLng(wgsLat, wgsLng)
         val dLat = transformLat(wgsLng - 105.0, wgsLat - 35.0)
         val dLng = transformLng(wgsLng - 105.0, wgsLat - 35.0)
@@ -37,13 +40,19 @@ object CoordinateUtils {
      * GCJ-02 → WGS-84（高精度逆向逼近迭代算法，误差小于 0.5 毫米）
      */
     fun gcj02ToWgs84(gcjLat: Double, gcjLng: Double): LatLng {
+        requireValidCoordinate(gcjLat, gcjLng, "GCJ-02")
         if (outOfChina(gcjLat, gcjLng)) return LatLng(gcjLat, gcjLng)
         var wgsLat = gcjLat
         var wgsLng = gcjLng
-        for (i in 0 until 3) {
-            val curr = wgs84ToGcj02(wgsLat, wgsLng)
-            wgsLat -= (curr.lat - gcjLat)
-            wgsLng -= (curr.lng - gcjLng)
+        repeat(MAX_INVERSE_ITERATIONS) {
+            val projected = wgs84ToGcj02(wgsLat, wgsLng)
+            val latError = projected.lat - gcjLat
+            val lngError = projected.lng - gcjLng
+            wgsLat -= latError
+            wgsLng -= lngError
+            if (kotlin.math.max(abs(latError), abs(lngError)) <= INVERSE_EPSILON_DEGREES) {
+                return LatLng(wgsLat, wgsLng)
+            }
         }
         return LatLng(wgsLat, wgsLng)
     }
@@ -52,6 +61,7 @@ object CoordinateUtils {
      * GCJ-02 → BD-09(百度坐标系)
      */
     fun gcj02ToBd09(gcjLat: Double, gcjLng: Double): LatLng {
+        requireValidCoordinate(gcjLat, gcjLng, "GCJ-02")
         val x = gcjLng
         val y = gcjLat
         val z = sqrt(x * x + y * y) + 0.00002 * sin(y * BD_PI)
@@ -65,6 +75,7 @@ object CoordinateUtils {
      * BD-09 → GCJ-02
      */
     fun bd09ToGcj02(bdLat: Double, bdLng: Double): LatLng {
+        requireValidCoordinate(bdLat, bdLng, "BD-09")
         val x = bdLng - 0.0065
         val y = bdLat - 0.006
         val z = sqrt(x * x + y * y) - 0.00002 * sin(y * BD_PI)
@@ -88,6 +99,15 @@ object CoordinateUtils {
         ret += (20.0 * sin(x * PI) + 40.0 * sin(x / 3.0 * PI)) * 2.0 / 3.0
         ret += (150.0 * sin(x / 12.0 * PI) + 300.0 * sin(x / 30.0 * PI)) * 2.0 / 3.0
         return ret
+    }
+
+    private fun requireValidCoordinate(lat: Double, lng: Double, coordinateSystem: String) {
+        require(lat.isFinite() && lng.isFinite()) {
+            "$coordinateSystem coordinates must be finite"
+        }
+        require(lat in -90.0..90.0 && lng in -180.0..180.0) {
+            "$coordinateSystem coordinates are out of range"
+        }
     }
 
     private fun outOfChina(lat: Double, lng: Double): Boolean {

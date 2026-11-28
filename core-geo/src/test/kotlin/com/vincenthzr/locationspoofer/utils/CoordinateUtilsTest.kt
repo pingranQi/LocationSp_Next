@@ -67,6 +67,48 @@ class CoordinateUtilsTest {
     }
 
     @Test
+    fun `coordinate conversions reject non finite and out of range input`() {
+        val invalidInputs = listOf(
+            Double.NaN to 116.0,
+            39.0 to Double.POSITIVE_INFINITY,
+            91.0 to 116.0,
+            39.0 to 181.0
+        )
+        invalidInputs.forEach { (lat, lng) ->
+            assertIllegalArgument { CoordinateUtils.wgs84ToGcj02(lat, lng) }
+            assertIllegalArgument { CoordinateUtils.gcj02ToWgs84(lat, lng) }
+            assertIllegalArgument { CoordinateUtils.gcj02ToBd09(lat, lng) }
+            assertIllegalArgument { CoordinateUtils.bd09ToGcj02(lat, lng) }
+        }
+    }
+
+    @Test
+    fun `inverse conversion converges consistently across representative locations`() {
+        val samples = listOf(
+            39.9087 to 116.3975,
+            31.2304 to 121.4737,
+            22.5431 to 114.0579,
+            30.5728 to 104.0668,
+            45.8038 to 126.5349
+        )
+        samples.forEach { (lat, lng) ->
+            val gcj = CoordinateUtils.wgs84ToGcj02(lat, lng)
+            val restored = CoordinateUtils.gcj02ToWgs84(gcj.lat, gcj.lng)
+            assertEquals("latitude at $lat,$lng", lat, restored.lat, 1e-8)
+            assertEquals("longitude at $lat,$lng", lng, restored.lng, 1e-8)
+        }
+    }
+
+    private fun assertIllegalArgument(block: () -> Any) {
+        try {
+            block()
+            throw AssertionError("Expected IllegalArgumentException")
+        } catch (_: IllegalArgumentException) {
+            // Expected.
+        }
+    }
+
+    @Test
     fun `gcj02ToBd09 shifts coordinates by a non-trivial but bounded amount`() {
         val result = CoordinateUtils.gcj02ToBd09(beijingLat, beijingLng)
         val latDelta = abs(result.lat - beijingLat)

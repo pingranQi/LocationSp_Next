@@ -3,6 +3,7 @@ package com.vincenthzr.locationspoofer.utils
 import com.vincenthzr.locationspoofer.utils.CoordinateUtils.LatLng
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -63,12 +64,49 @@ class RoutePathTest {
     }
 
     @Test
+    fun `interpolates along a great-circle arc at high latitudes`() {
+        val start = LatLng(70.0, 10.0)
+        val end = GeoMath.destination(start, 90.0, 100_000.0)
+        val path = RoutePath(listOf(start, end))
+        val midpoint = path.positionAt(path.totalDistance / 2.0, stopAtDestination = false)
+
+        assertTrue(midpoint.lat > start.lat)
+        assertEquals(path.totalDistance / 2.0,
+            GeoMath.distance(start, LatLng(midpoint.lat, midpoint.lng)), 0.5)
+        assertEquals(90.0, midpoint.bearing.toDouble(), 0.5)
+    }
+
+    @Test
     fun `destination normalizes longitude after crossing antimeridian`() {
         val start = LatLng(0.0, 179.9)
         val destination = GeoMath.destination(start, 90.0, 30_000.0)
 
         assertTrue(destination.lng in -180.0..180.0)
         assertTrue(destination.lng < 0.0)
+    }
+
+    @Test
+    fun `rejects non-finite and out-of-range route coordinates`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RoutePath(listOf(a, LatLng(Double.NaN, 120.0)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RoutePath(listOf(a, LatLng(91.0, 120.0)))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RoutePath(listOf(a, LatLng(30.0, 181.0)))
+        }
+    }
+
+    @Test
+    fun `skips repeated stationary fixes without producing invalid positions`() {
+        val c = GeoMath.destination(b, 90.0, 1000.0)
+        val path = RoutePath(listOf(a, a, b, b, c))
+        val midpoint = path.positionAt(500.0, stopAtDestination = false)
+
+        assertTrue(midpoint.lat.isFinite())
+        assertTrue(midpoint.lng.isFinite())
+        assertEquals(500.0, GeoMath.distance(a, LatLng(midpoint.lat, midpoint.lng)), 0.5)
     }
 
     @Test
