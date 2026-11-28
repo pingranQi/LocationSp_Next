@@ -69,7 +69,14 @@ object RouteScenarioCodec {
         val paceVariationSec: Int = 0,
         val fatigueLevel: Int = 0,
         val firstKmBiasSec: Int = 0,
-        val fatigueStartKm: String = "2.0"
+        val fatigueStartKm: String = "2.0",
+        val mockWifi: Boolean = true,
+        val mockCell: Boolean = true,
+        val mockBluetooth: Boolean = true,
+        val enableJitter: Boolean = true,
+        val altitudeInput: String = "0.0",
+        val altitudeVariationM: Int = 10,
+        val satelliteCountInput: String = "20"
     )
 
     fun encode(scenario: Scenario): String {
