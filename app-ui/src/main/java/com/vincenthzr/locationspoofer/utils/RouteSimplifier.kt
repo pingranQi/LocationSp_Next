@@ -4,47 +4,90 @@ import com.vincenthzr.locationspoofer.data.model.RoutePoint
 import kotlin.math.cos
 import kotlin.math.sqrt
 
-/** Iterative Douglas–Peucker simplification; retained points keep all waypoint metadata. */
+/**
+ * Iterative Douglas–Peucker simplification.
+ *
+ * Semantic waypoints (dwell, elevation or timestamp) split the route into independent
+ * simplification ranges, so geometry on either side of a mandatory point is never
+ * approximated by a segment that skips across that point.
+ */
 object RouteSimplifier {
     fun simplify(points: List<RoutePoint>, toleranceMeters: Double): List<RoutePoint> {
-        require(toleranceMeters.isFinite() && toleranceMeters >= 0.0) { "Tolerance must be finite and non-negative" }
-        if (points.size <= 2 || toleranceMeters == 0.0) return points.toList()
-        points.forEach {
-            require(it.lat.isFinite() && it.lat in -90.0..90.0)
-            require(it.lng.isFinite() && it.lng in -180.0..180.0)
+        require(toleranceMeters.isFinite() && toleranceMeters >= 0.0) {
+            "Tolerance must be finite and non-negative"
         }
+        if (points.size <= 2 || toleranceMeters == 0.0) {
+            validate(points)
+            return points.toList()
+        }
+        validate(points)
 
+        val mandatory = points.indices.filter { index ->
+            index == 0 || index == points.lastIndex || points[index].isSemanticWaypoint()
+        }
         val keep = BooleanArray(points.size)
-        keep[0] = true
-        keep[points.lastIndex] = true
-        points.forEachIndexed { index, point ->
-            if (point.waitSec > 0.0 || point.elevationMeters != null || point.timestampEpochMillis != null) {
-                keep[index] = true
+        mandatory.forEach { keep[it] = true }
+
+        // Simplify each range between mandatory points independently.
+        for (rangeIndex in 0 until mandatory.lastIndex) {
+            simplifyRange(points, mandatory[rangeIndex], mandatory[rangeIndex + 1], toleranceMeters, keep)
+        }
+        return points.filterIndexed { index, _ -> keep[index] }
+    }
+
+    private fun RoutePoint.isSemanticWaypoint(): Boolean =
+        waitSec != 0.0 || elevationMeters != null || timestampEpochMillis != null
+
+    private fun validate(points: List<RoutePoint>) {
+        points.forEach { point ->
+            require(point.lat.isFinite() && point.lat in -90.0..90.0) {
+                "Latitude is out of range"
+            }
+            require(point.lng.isFinite() && point.lng in -180.0..180.0) {
+                "Longitude is out of range"
+            }
+            require(point.waitSec.isFinite() && point.waitSec in 0.0..86_400.0) {
+                "Waypoint dwell time is out of range"
+            }
+            val elevation = point.elevationMeters
+            require(elevation == null || elevation.isFinite()) { "Waypoint elevation is invalid" }
+            require(point.timestampEpochMillis == null || point.timestampEpochMillis >= 0L) {
+                "Waypoint timestamp is invalid"
             }
         }
+    }
+
+    private fun simplifyRange(
+        points: List<RoutePoint>,
+        start: Int,
+        end: Int,
+        toleranceMeters: Double,
+        keep: BooleanArray
+    ) {
+        if (end - start <= 1) return
         val stack = ArrayDeque<Pair<Int, Int>>()
-        stack.addLast(0 to points.lastIndex)
+        stack.addLast(start to end)
 
         while (stack.isNotEmpty()) {
-            val (start, end) = stack.removeLast()
-            if (end - start <= 1) continue
+            val (rangeStart, rangeEnd) = stack.removeLast()
+            if (rangeEnd - rangeStart <= 1) continue
             var maxDistance = -1.0
             var maxIndex = -1
-            for (index in start + 1 until end) {
-                val distance = pointToSegmentDistance(points[index], points[start], points[end])
+            for (index in rangeStart + 1 until rangeEnd) {
+                val distance = pointToSegmentDistance(
+                    points[index], points[rangeStart], points[rangeEnd]
+                )
                 if (distance > maxDistance) {
                     maxDistance = distance
                     maxIndex = index
                 }
             }
-            if (maxDistance > toleranceMeters && maxIndex > start) {
+            if (maxDistance > toleranceMeters && maxIndex > rangeStart) {
                 keep[maxIndex] = true
-                stack.addLast(start to maxIndex)
-                stack.addLast(maxIndex to end)
+                stack.addLast(rangeStart to maxIndex)
+                stack.addLast(maxIndex to rangeEnd)
             }
         }
-
-        return points.filterIndexed { index, _ -> keep[index] }
     }
 
     private fun pointToSegmentDistance(point: RoutePoint, start: RoutePoint, end: RoutePoint): Double {
