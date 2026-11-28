@@ -3,14 +3,50 @@ package com.vincenthzr.locationspoofer.utils
 import com.vincenthzr.locationspoofer.data.model.RoutePoint
 import com.vincenthzr.locationspoofer.data.model.RouteRunMode
 import com.vincenthzr.locationspoofer.data.model.SimMode
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /** Portable route + simulation preset. The format is versioned independently of the Room schema. */
 object RouteScenarioCodec {
     const val MAX_BYTES = 10 * 1024 * 1024
     const val MAX_POINTS = 100_000
     private const val FORMAT_VERSION = 1
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
+
+    @Serializable
+    private data class PointPayload(
+        val lat: Double,
+        val lng: Double,
+        val waitSec: Double = 0.0,
+        val elevationMeters: Double? = null,
+        val timestampEpochMillis: Long? = null
+    )
+
+    @Serializable
+    private data class ScenarioPayload(
+        val format: String,
+        val version: Int,
+        val name: String,
+        val points: List<PointPayload>,
+        val runMode: String = RouteRunMode.LOOP.name,
+        val speedMode: String = SimMode.WALKING.name,
+        val customSpeedMs: Double = 3.0,
+        val useRealRoute: Boolean = false,
+        val stopAtDestination: Boolean = false,
+        val enableStepSimulation: Boolean = true,
+        val stepCadenceSpm: Int = 165,
+        val isAutoCadence: Boolean = true,
+        val paceVariationSec: Int = 0,
+        val fatigueLevel: Int = 0,
+        val firstKmBiasSec: Int = 0,
+        val fatigueStartKm: String = "2.0"
+    )
 
     data class Scenario(
         val name: String,
@@ -31,69 +67,51 @@ object RouteScenarioCodec {
 
     fun encode(scenario: Scenario): String {
         validate(scenario)
-        val points = JSONArray()
-        scenario.points.forEach { point ->
-            points.put(
-                JSONObject()
-                    .put("lat", point.lat)
-                    .put("lng", point.lng)
-                    .put("waitSec", point.waitSec)
-                    .put("elevationMeters", point.elevationMeters ?: JSONObject.NULL)
-                    .put("timestampEpochMillis", point.timestampEpochMillis ?: JSONObject.NULL)
-            )
-        }
-        return JSONObject()
-            .put("format", "location-spoofing-scenario")
-            .put("version", FORMAT_VERSION)
-            .put("name", scenario.name)
-            .put("points", points)
-            .put("runMode", scenario.runMode.name)
-            .put("speedMode", scenario.speedMode.name)
-            .put("customSpeedMs", scenario.customSpeedMs)
-            .put("useRealRoute", scenario.useRealRoute)
-            .put("stopAtDestination", scenario.stopAtDestination)
-            .put("enableStepSimulation", scenario.enableStepSimulation)
-            .put("stepCadenceSpm", scenario.stepCadenceSpm)
-            .put("isAutoCadence", scenario.isAutoCadence)
-            .put("paceVariationSec", scenario.paceVariationSec)
-            .put("fatigueLevel", scenario.fatigueLevel)
-            .put("firstKmBiasSec", scenario.firstKmBiasSec)
-            .put("fatigueStartKm", scenario.fatigueStartKm)
-            .toString(2)
+        val payload = ScenarioPayload(
+            format = "location-spoofing-scenario",
+            version = FORMAT_VERSION,
+            name = scenario.name,
+            points = scenario.points.map {
+                PointPayload(it.lat, it.lng, it.waitSec, it.elevationMeters, it.timestampEpochMillis)
+            },
+            runMode = scenario.runMode.name,
+            speedMode = scenario.speedMode.name,
+            customSpeedMs = scenario.customSpeedMs,
+            useRealRoute = scenario.useRealRoute,
+            stopAtDestination = scenario.stopAtDestination,
+            enableStepSimulation = scenario.enableStepSimulation,
+            stepCadenceSpm = scenario.stepCadenceSpm,
+            isAutoCadence = scenario.isAutoCadence,
+            paceVariationSec = scenario.paceVariationSec,
+            fatigueLevel = scenario.fatigueLevel,
+            firstKmBiasSec = scenario.firstKmBiasSec,
+            fatigueStartKm = scenario.fatigueStartKm
+        )
+        return json.encodeToString(payload)
     }
 
-    fun decode(json: String): Scenario {
-        require(json.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "Scenario file exceeds size limit" }
-        val root = JSONObject(json)
-        require(root.optString("format") == "location-spoofing-scenario") { "Unsupported scenario format" }
-        require(root.optInt("version", -1) == FORMAT_VERSION) { "Unsupported scenario version" }
-        val array = root.getJSONArray("points")
-        require(array.length() in 2..MAX_POINTS) { "Scenario must contain between 2 and $MAX_POINTS route points" }
-        val points = List(array.length()) { index ->
-            val item = array.getJSONObject(index)
-            RoutePoint(
-                lat = item.getDouble("lat"),
-                lng = item.getDouble("lng"),
-                waitSec = item.optDouble("waitSec", 0.0),
-                elevationMeters = if (item.has("elevationMeters") && !item.isNull("elevationMeters")) item.getDouble("elevationMeters") else null,
-                timestampEpochMillis = if (item.has("timestampEpochMillis") && !item.isNull("timestampEpochMillis")) item.getLong("timestampEpochMillis") else null
-            )
-        }
+    fun decode(source: String): Scenario {
+        require(source.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "Scenario file exceeds size limit" }
+        val payload = json.decodeFromString<ScenarioPayload>(source)
+        require(payload.format == "location-spoofing-scenario") { "Unsupported scenario format" }
+        require(payload.version == FORMAT_VERSION) { "Unsupported scenario version" }
         val scenario = Scenario(
-            name = root.optString("name", "Imported scenario").ifBlank { "Imported scenario" },
-            points = points,
-            runMode = enumValueOrDefault(root.optString("runMode"), RouteRunMode.LOOP),
-            speedMode = enumValueOrDefault(root.optString("speedMode"), SimMode.WALKING),
-            customSpeedMs = root.optDouble("customSpeedMs", 3.0),
-            useRealRoute = root.optBoolean("useRealRoute", false),
-            stopAtDestination = root.optBoolean("stopAtDestination", false),
-            enableStepSimulation = root.optBoolean("enableStepSimulation", true),
-            stepCadenceSpm = root.optInt("stepCadenceSpm", 165),
-            isAutoCadence = root.optBoolean("isAutoCadence", true),
-            paceVariationSec = root.optInt("paceVariationSec", 0),
-            fatigueLevel = root.optInt("fatigueLevel", 0),
-            firstKmBiasSec = root.optInt("firstKmBiasSec", 0),
-            fatigueStartKm = root.optString("fatigueStartKm", "2.0")
+            name = payload.name.ifBlank { "Imported scenario" },
+            points = payload.points.map {
+                RoutePoint(it.lat, it.lng, it.waitSec, it.elevationMeters, it.timestampEpochMillis)
+            },
+            runMode = enumValueOrDefault(payload.runMode, RouteRunMode.LOOP),
+            speedMode = enumValueOrDefault(payload.speedMode, SimMode.WALKING),
+            customSpeedMs = payload.customSpeedMs,
+            useRealRoute = payload.useRealRoute,
+            stopAtDestination = payload.stopAtDestination,
+            enableStepSimulation = payload.enableStepSimulation,
+            stepCadenceSpm = payload.stepCadenceSpm,
+            isAutoCadence = payload.isAutoCadence,
+            paceVariationSec = payload.paceVariationSec,
+            fatigueLevel = payload.fatigueLevel,
+            firstKmBiasSec = payload.firstKmBiasSec,
+            fatigueStartKm = payload.fatigueStartKm
         )
         validate(scenario)
         return scenario
