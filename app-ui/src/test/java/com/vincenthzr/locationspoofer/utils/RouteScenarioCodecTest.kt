@@ -3,6 +3,7 @@ package com.vincenthzr.locationspoofer.utils
 import com.vincenthzr.locationspoofer.data.model.RoutePoint
 import com.vincenthzr.locationspoofer.data.model.RouteRunMode
 import com.vincenthzr.locationspoofer.data.model.SimMode
+import com.vincenthzr.locationspoofer.utils.CoordinateUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -39,6 +40,25 @@ class RouteScenarioCodecTest {
 
         val decoded = RouteScenarioCodec.decode(RouteScenarioCodec.encode(source))
         assertEquals(source, decoded)
+    }
+
+    @Test
+    fun normalizesDeclaredGcj02ScenarioCoordinatesToWgs84() {
+        val expected = CoordinateUtils.LatLng(31.2304, 121.4737)
+        val gcj = CoordinateUtils.wgs84ToGcj02(expected.lat, expected.lng)
+        val scenario = RouteScenarioCodec.Scenario(
+            name = "GCJ input",
+            points = listOf(
+                RoutePoint(gcj.lat, gcj.lng),
+                RoutePoint(gcj.lat + 0.001, gcj.lng + 0.001)
+            ),
+            coordinateSystem = "GCJ02"
+        )
+
+        val decoded = RouteScenarioCodec.decode(RouteScenarioCodec.encode(scenario))
+        assertEquals("WGS84", decoded.coordinateSystem)
+        assertEquals(expected.lat, decoded.points.first().lat, 1e-5)
+        assertEquals(expected.lng, decoded.points.first().lng, 1e-5)
     }
 
     @Test
