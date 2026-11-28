@@ -26,7 +26,7 @@ import kotlin.random.Random
 import java.util.concurrent.ConcurrentHashMap
 import io.github.libxposed.api.*
 
-private val bleScanReportDelayMillis = ConcurrentHashMap<Any, Long>()
+internal val bleScanReportDelayMillis = ConcurrentHashMap<Any, Long>()
 
 internal fun shouldBatchBleResults(reportDelayMillis: Long): Boolean = reportDelayMillis > 0L
 
