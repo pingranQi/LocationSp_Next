@@ -108,7 +108,9 @@ object RouteScenarioCodec {
             altitudeVariationM = scenario.altitudeVariationM,
             satelliteCountInput = scenario.satelliteCountInput
         )
-        return json.encodeToString(payload)
+        val encoded = json.encodeToString(payload)
+        require(encoded.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "Scenario file exceeds size limit" }
+        return encoded
     }
 
     fun decode(source: String): Scenario {
@@ -149,6 +151,7 @@ object RouteScenarioCodec {
         enumValues<T>().firstOrNull { it.name == value } ?: fallback
 
     private fun validate(scenario: Scenario) {
+        require(scenario.name.isNotBlank() && scenario.name.length <= 256) { "Scenario name is invalid" }
         require(scenario.points.size in 2..MAX_POINTS) { "Scenario must contain between 2 and $MAX_POINTS route points" }
         scenario.points.forEach { point ->
             require(point.lat.isFinite() && point.lat in -90.0..90.0) { "Latitude is out of range" }
