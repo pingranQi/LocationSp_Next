@@ -252,10 +252,10 @@ private fun LocationHooker.ensureCallbackHooked(callback: Any, vararg deliveryMe
             XposedHelpers.hookAllMethods(clazz, methodName) { innerChain, _ ->
                 val callbackInstance = innerChain.thisObject
                 val binder = (callbackInstance as? IInterface)?.asBinder() ?: (callbackInstance as? IBinder)
-                // ILocationCallback.onLocation is one-shot; release strong references after delivery.
+                // Only getCurrentLocation's ILocationCallback is one-shot.
+                // ILocationListener also delivers onLocation repeatedly and must remain tracked.
                 val oneShot = methodName == "onLocation" &&
-                    (binder != null && activeCallbackBinders.containsKey(binder) ||
-                        spoofedListenerInstances.contains(callbackInstance))
+                    binder != null && activeCallbackBinders.containsKey(binder)
                 try {
                     val config = readConfig()
                     val isGlobal = config?.optBoolean("system_hook_global_mode", false) == true
