@@ -32,9 +32,7 @@ data class LocationRecord(
     val lat: Double,
     val lng: Double,
     val timestamp: Long = System.currentTimeMillis(),
-    @ColumnInfo(defaultValue = "''")
     val placeName: String = "",
-    @ColumnInfo(defaultValue = "''")
     val remark: String = "",
     val selectedWifiBssid: String? = null,
     val selectedBluetoothAddress: String? = null,
@@ -67,7 +65,6 @@ data class WifiDevice(
     val ssid: String = "",
     val frequency: Int = 2412,
     val capabilities: String = "",
-    @ColumnInfo(defaultValue = "''")
     val vendor: String = ""
 )
 
