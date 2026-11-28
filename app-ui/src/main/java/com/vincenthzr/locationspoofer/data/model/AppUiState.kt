@@ -126,6 +126,9 @@ data class AppState(
     val savedRoutes: List<SavedRoute> = emptyList(),
     // 路线规划
     val routePoints: List<RoutePoint> = emptyList(),
+    /** Bounded edit history for route planning. */
+    val routeUndoHistory: List<List<RoutePoint>> = emptyList(),
+    val routeRedoHistory: List<List<RoutePoint>> = emptyList(),
     val routePlanStage: RoutePlanStage = RoutePlanStage.IDLE,
     /** 路线运行模式（手动 / 循环） */
     val routeRunMode: RouteRunMode = RouteRunMode.LOOP,
