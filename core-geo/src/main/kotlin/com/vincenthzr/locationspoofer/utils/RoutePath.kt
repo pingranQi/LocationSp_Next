@@ -86,6 +86,16 @@ class RoutePath(points: List<LatLng>, waitSeconds: List<Double> = emptyList()) {
     val isClosedLoop: Boolean = this.points.size >= 2 && GeoMath.distance(this.points.first(), this.points.last()) <= 5.0
     val isValid: Boolean get() = points.size >= 2 && totalDistance > 0.0
 
+    private val forwardDwellEvents: List<Pair<Double, Double>> =
+        (1 until points.size).mapNotNull { index ->
+            waitSeconds[index].takeIf { it > 0.0 }?.let { cumulative[index] to it }
+        }
+
+    private val outAndBackDwellEvents: List<Pair<Double, Double>> =
+        (forwardDwellEvents + (points.lastIndex - 1 downTo 0).mapNotNull { index ->
+            waitSeconds[index].takeIf { it > 0.0 }?.let { (2.0 * totalDistance - cumulative[index]) to it }
+        }).sortedBy { it.first }
+
     data class TimedProgress(val distanceM: Double, val isDwelling: Boolean)
 
     fun distanceAtPoint(index: Int): Double {
@@ -108,30 +118,26 @@ class RoutePath(points: List<LatLng>, waitSeconds: List<Double> = emptyList()) {
         if (cycleDistance <= 0.0) return TimedProgress(offsetMeters, false)
         val rawMaximum = profile.distanceAfter(offsetMeters, elapsedSeconds)
         val maximum = if (stopAtDestination) rawMaximum.coerceAtMost(totalDistance) else rawMaximum
-        val events = mutableListOf<Pair<Double, Double>>()
-
-        for (index in 1 until points.size) {
-            val wait = waitSeconds[index]
-            if (wait > 0.0) events += cumulative[index] to wait
-        }
-        if (!stopAtDestination && !isClosedLoop) {
-            for (index in points.lastIndex - 1 downTo 0) {
-                val wait = waitSeconds[index]
-                if (wait > 0.0) events += (2.0 * totalDistance - cumulative[index]) to wait
-            }
-        }
+        val events = if (!stopAtDestination && !isClosedLoop) outAndBackDwellEvents else forwardDwellEvents
         if (events.isEmpty()) return TimedProgress(maximum, false)
-        events.sortBy { it.first }
 
         var consumedWait = 0.0
         val firstCycle = kotlin.math.floor(offsetMeters / cycleDistance).toLong().coerceAtLeast(0L)
         val lastCycle = kotlin.math.floor(maximum / cycleDistance).toLong().coerceAtLeast(firstCycle)
+        val offsetWithinCycle = offsetMeters - firstCycle * cycleDistance
+        var low = 0
+        var high = events.size
+        while (low < high) {
+            val middle = (low + high) ushr 1
+            if (events[middle].first <= offsetWithinCycle + 1e-6) low = middle + 1 else high = middle
+        }
         var cycle = firstCycle
         var eventCount = 0
         while (cycle <= lastCycle && eventCount < 100_000) {
-            for ((eventOffset, wait) in events) {
+            val firstIndex = if (cycle == firstCycle) low else 0
+            for (index in firstIndex until events.size) {
+                val (eventOffset, wait) = events[index]
                 val eventDistance = cycle * cycleDistance + eventOffset
-                if (eventDistance <= offsetMeters + 1e-6) continue
                 if (eventDistance > maximum + 1e-6) break
                 eventCount++
                 val travelTime = (profile.elapsedAt(eventDistance) - profile.elapsedAt(offsetMeters)).coerceAtLeast(0.0)
