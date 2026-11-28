@@ -10,7 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,6 +38,11 @@ fun RouteBottomPanel(
     onSaveRoute: () -> Unit,
     onStartPlanning: () -> Unit,
     onStopRoute: () -> Unit,
+    isPlaybackPaused: Boolean = false,
+    onPausePlayback: () -> Unit = {},
+    onResumePlayback: () -> Unit = {},
+    playbackProgress: Float = 0f,
+    onSeekPlayback: (Float) -> Unit = {},
     searchBar: (@Composable (Modifier) -> Unit)? = null
 ) {
     Box(
@@ -200,11 +205,38 @@ fun RouteBottomPanel(
                         }
 
                         RoutePlanStage.RUNNING -> {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            var seekValue by remember { mutableFloatStateOf(playbackProgress) }
+                            var isSeeking by remember { mutableStateOf(false) }
+                            LaunchedEffect(playbackProgress) {
+                                if (!isSeeking) seekValue = playbackProgress
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (uiState.routeRunMode == RouteRunMode.LOOP) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(stringResource(R.string.route_playback_progress), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text((seekValue * 100).toInt().toString() + "%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Slider(
+                                        value = seekValue,
+                                        onValueChange = {
+                                            seekValue = it
+                                            isSeeking = true
+                                        },
+                                        onValueChangeFinished = {
+                                            isSeeking = false
+                                            onSeekPlayback(seekValue)
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.padding(start = 6.dp)
@@ -224,26 +256,52 @@ fun RouteBottomPanel(
                                     )
                                 }
 
-                                Button(
-                                    onClick = onStopRoute,
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                                        contentColor = MaterialTheme.colorScheme.error
-                                    ),
-                                    modifier = Modifier.height(46.dp)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        Icons.Rounded.StopCircle,
-                                        null,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        stringResource(R.string.stop_simulation),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.5.sp
-                                    )
+                                    if (uiState.routeRunMode == RouteRunMode.LOOP) {
+                                        OutlinedButton(
+                                            onClick = if (isPlaybackPaused) onResumePlayback else onPausePlayback,
+                                            shape = RoundedCornerShape(14.dp),
+                                            modifier = Modifier.height(46.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp)
+                                        ) {
+                                            Icon(
+                                                if (isPlaybackPaused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                                                null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                stringResource(if (isPlaybackPaused) R.string.route_resume else R.string.route_pause),
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+                                    Button(
+                                        onClick = onStopRoute,
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                                            contentColor = MaterialTheme.colorScheme.error
+                                        ),
+                                        modifier = Modifier.height(46.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.StopCircle,
+                                            null,
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            stringResource(R.string.stop_simulation),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp
+                                        )
+                                    }
+                                }
                                 }
                             }
                         }

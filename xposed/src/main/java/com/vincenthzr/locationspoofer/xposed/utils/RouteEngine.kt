@@ -36,11 +36,13 @@ object RouteEngine {
         val cached = cachedPath
         if (routeArray === cachedRouteArray && cached != null) return cached
         val points = ArrayList<LatLng>(routeArray.length())
+        val waits = ArrayList<Double>(routeArray.length())
         for (i in 0 until routeArray.length()) {
             val obj = routeArray.optJSONObject(i) ?: continue
             points += LatLng(obj.optDouble("lat", 0.0), obj.optDouble("lng", 0.0))
+            waits += obj.optDouble("waitSec", 0.0).coerceIn(0.0, 86_400.0)
         }
-        return RoutePath(points).also {
+        return RoutePath(points, waits).also {
             cachedPath = it
             cachedRouteArray = routeArray
         }
@@ -80,10 +82,12 @@ object RouteEngine {
         val profile = paceProfile(config, speed, startTime)
         // 暂停后继续时，路线从暂停处的累计距离接着走（start_timestamp 重置为继续的时刻）
         val offset = config.optDouble("route_distance_offset", 0.0).coerceAtLeast(0.0)
-        val traveled = profile.distanceAfter(offset, elapsedSec)
+        val stopAtDestination = config.optBoolean("stop_at_destination", false)
+        val progress = path.progressAfter(profile, offset, elapsedSec, stopAtDestination)
+        val traveled = progress.distanceM
 
-        val pos = path.positionAt(traveled, config.optBoolean("stop_at_destination", false))
-        val currentSpeed = if (pos.arrived) 0f else profile.speedAt(profile.elapsedAt(traveled)).toFloat()
+        val pos = path.positionAt(traveled, stopAtDestination)
+        val currentSpeed = if (progress.isDwelling || pos.arrived) 0f else profile.speedAt(profile.elapsedAt(traveled)).toFloat()
         return SpoofedMotion(pos.lat, pos.lng, pos.bearing, currentSpeed)
     }
 
@@ -100,7 +104,7 @@ object RouteEngine {
         val startTime = if (rawStartTime > 0L) rawStartTime else now
         val elapsedSec = (now - startTime).coerceAtLeast(0L) / 1000.0
         val offset = config.optDouble("route_distance_offset", 0.0).coerceAtLeast(0.0)
-        return paceProfile(config, speed, startTime).distanceAfter(offset, elapsedSec)
+        return routePath(routeArray).distanceAfter(paceProfile(config, speed, startTime), offset, elapsedSec, config.optBoolean("stop_at_destination", false))
     }
 
     /**

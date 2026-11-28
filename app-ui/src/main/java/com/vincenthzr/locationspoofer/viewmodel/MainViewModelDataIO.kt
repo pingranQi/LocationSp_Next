@@ -11,22 +11,14 @@ import com.vincenthzr.locationspoofer.data.model.MapEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.vincenthzr.locationspoofer.utils.RoutePointJsonCodec
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 
 // MainViewModel 的环境数据序列化、导出与导入相关扩展函数
 
-internal fun MainViewModel.parseRoutePoints(json: String): List<RoutePoint> {
-    return try {
-        val arr = org.json.JSONArray(json)
-        (0 until arr.length()).map { i ->
-            val obj = arr.getJSONObject(i)
-            RoutePoint(obj.getDouble("lat"), obj.getDouble("lng"))
-        }
-    } catch (e: Exception) {
-        emptyList()
-    }
-}
+internal fun MainViewModel.parseRoutePoints(json: String): List<RoutePoint> =
+    runCatching { RoutePointJsonCodec.decode(json) }.getOrDefault(emptyList())
 
 internal suspend fun MainViewModel.saveEnvironmentData(
     lat: Double,

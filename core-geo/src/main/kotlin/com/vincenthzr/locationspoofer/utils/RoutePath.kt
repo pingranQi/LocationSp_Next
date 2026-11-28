@@ -61,15 +61,19 @@ object GeoMath {
  * 规则：首尾相距 5 米以内视为闭环，走到终点后从起点继续；否则走到终点后原路折返，来回往复。
  * stopAtDestination 为真时走到终点就停下。
  */
-class RoutePath(points: List<LatLng>) {
+class RoutePath(points: List<LatLng>, waitSeconds: List<Double> = emptyList()) {
     /** Immutable snapshot: callers may safely reuse or mutate their source collection. */
     val points: List<LatLng> = points.toList()
+    val waitSeconds: List<Double> = if (waitSeconds.isEmpty()) List(points.size) { 0.0 } else waitSeconds.toList()
 
     init {
         require(this.points.all { point ->
             point.lat.isFinite() && point.lng.isFinite() &&
                 point.lat in -90.0..90.0 && point.lng in -180.0..180.0
         }) { "route points must contain finite, in-range coordinates" }
+        require(this.waitSeconds.size == this.points.size && this.waitSeconds.all { it.isFinite() && it in 0.0..86_400.0 }) {
+            "route waypoint dwell times must be finite and between 0 and 86400 seconds"
+        }
     }
 
     data class Position(val lat: Double, val lng: Double, val bearing: Float, val arrived: Boolean)
@@ -81,6 +85,84 @@ class RoutePath(points: List<LatLng>) {
     val totalDistance: Double = if (points.isEmpty()) 0.0 else cumulative.last()
     val isClosedLoop: Boolean = this.points.size >= 2 && GeoMath.distance(this.points.first(), this.points.last()) <= 5.0
     val isValid: Boolean get() = points.size >= 2 && totalDistance > 0.0
+
+    private val forwardDwellEvents: List<Pair<Double, Double>> =
+        (1 until points.size).mapNotNull { index ->
+            waitSeconds[index].takeIf { it > 0.0 }?.let { cumulative[index] to it }
+        }
+
+    private val outAndBackDwellEvents: List<Pair<Double, Double>> =
+        (forwardDwellEvents + (points.lastIndex - 1 downTo 0).mapNotNull { index ->
+            waitSeconds[index].takeIf { it > 0.0 }?.let { (2.0 * totalDistance - cumulative[index]) to it }
+        }).sortedBy { it.first }
+
+    data class TimedProgress(val distanceM: Double, val isDwelling: Boolean)
+
+    fun distanceAtPoint(index: Int): Double {
+        require(index in cumulative.indices)
+        return cumulative[index]
+    }
+
+    /** Shared deterministic waypoint dwell scheduling for the app and location hook. */
+    fun progressAfter(
+        profile: PaceProfile,
+        offsetMeters: Double,
+        elapsedSeconds: Double,
+        stopAtDestination: Boolean
+    ): TimedProgress {
+        require(offsetMeters.isFinite() && offsetMeters >= 0.0)
+        require(elapsedSeconds.isFinite() && elapsedSeconds >= 0.0)
+        if (!isValid || elapsedSeconds <= 0.0) return TimedProgress(offsetMeters, false)
+
+        val cycleDistance = if (stopAtDestination || isClosedLoop) totalDistance else totalDistance * 2.0
+        if (cycleDistance <= 0.0) return TimedProgress(offsetMeters, false)
+        val rawMaximum = profile.distanceAfter(offsetMeters, elapsedSeconds)
+        val maximum = if (stopAtDestination) rawMaximum.coerceAtMost(totalDistance) else rawMaximum
+        val events = if (!stopAtDestination && !isClosedLoop) outAndBackDwellEvents else forwardDwellEvents
+        if (events.isEmpty()) return TimedProgress(maximum, false)
+
+        var consumedWait = 0.0
+        val firstCycle = kotlin.math.floor(offsetMeters / cycleDistance).toLong().coerceAtLeast(0L)
+        val lastCycle = kotlin.math.floor(maximum / cycleDistance).toLong().coerceAtLeast(firstCycle)
+        val offsetWithinCycle = offsetMeters - firstCycle * cycleDistance
+        var low = 0
+        var high = events.size
+        while (low < high) {
+            val middle = (low + high) ushr 1
+            if (events[middle].first <= offsetWithinCycle + 1e-6) low = middle + 1 else high = middle
+        }
+        var cycle = firstCycle
+        var eventCount = 0
+        while (cycle <= lastCycle && eventCount < 100_000) {
+            val firstIndex = if (cycle == firstCycle) low else 0
+            for (index in firstIndex until events.size) {
+                val (eventOffset, wait) = events[index]
+                val eventDistance = cycle * cycleDistance + eventOffset
+                if (eventDistance > maximum + 1e-6) break
+                eventCount++
+                val travelTime = (profile.elapsedAt(eventDistance) - profile.elapsedAt(offsetMeters)).coerceAtLeast(0.0)
+                val arrivalTime = travelTime + consumedWait
+                if (elapsedSeconds < arrivalTime) {
+                    return TimedProgress(profile.distanceAfter(offsetMeters, (elapsedSeconds - consumedWait).coerceAtLeast(0.0)), false)
+                }
+                if (elapsedSeconds < arrivalTime + wait) {
+                    return TimedProgress(eventDistance, true)
+                }
+                consumedWait += wait
+            }
+            cycle++
+        }
+
+        val distance = profile.distanceAfter(offsetMeters, (elapsedSeconds - consumedWait).coerceAtLeast(0.0))
+        return TimedProgress(if (stopAtDestination) distance.coerceAtMost(totalDistance) else distance, false)
+    }
+
+    fun distanceAfter(
+        profile: PaceProfile,
+        offsetMeters: Double,
+        elapsedSeconds: Double,
+        stopAtDestination: Boolean
+    ): Double = progressAfter(profile, offsetMeters, elapsedSeconds, stopAtDestination).distanceM
 
     /**
      * Find the segment containing [along] in O(log n), then skip any zero-length

@@ -6,6 +6,7 @@ import java.util.Locale
 import androidx.lifecycle.viewModelScope
 import com.vincenthzr.locationspoofer.ui.R
 import com.vincenthzr.locationspoofer.data.model.RoutePoint
+import com.vincenthzr.locationspoofer.utils.RoutePointJsonCodec
 import com.vincenthzr.locationspoofer.utils.AltitudeModel
 import com.vincenthzr.locationspoofer.data.model.RoutePlanStage
 import com.vincenthzr.locationspoofer.data.model.AppMapType
@@ -114,25 +115,19 @@ internal fun MainViewModel.initialize() {
     viewModelScope.launch {
         locationRepository.getSavedRoutes().collect { entities ->
             val routes = entities.map { entity ->
-                val points = mutableListOf<RoutePoint>()
-                try {
-                    val arr = org.json.JSONArray(entity.pointsJson)
-                    for (i in 0 until arr.length()) {
-                        val obj = arr.getJSONObject(i)
-                        points.add(RoutePoint(obj.getDouble("lat"), obj.getDouble("lng")))
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                val points = runCatching {
+                    RoutePointJsonCodec.decode(entity.pointsJson)
+                }.getOrElse { error ->
+                    android.util.Log.w("SavedRoutes", "Skipping invalid saved route ${entity.id}", error)
+                    emptyList()
                 }
                 com.vincenthzr.locationspoofer.data.model.SavedRoute(
                     entity.name,
                     points,
                     isTrajectory = entity.source ==
-                        com.vincenthzr.locationspoofer.data.repository.LocationRepository.SOURCE_TRAJECTORY
-                ).apply {
-                    // 如果需要，动态附加 ID，或者直接使用名称进行删除
-                    // 目前 MapScreen 的 showSavedRoutesDialog 使用 route.name
-                }
+                        com.vincenthzr.locationspoofer.data.repository.LocationRepository.SOURCE_TRAJECTORY,
+                    id = entity.id
+                )
             }
             _uiState.update { it.copy(savedRoutes = routes) }
         }

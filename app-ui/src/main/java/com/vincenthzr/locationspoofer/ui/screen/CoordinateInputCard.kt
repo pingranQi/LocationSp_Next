@@ -1,5 +1,9 @@
 package com.vincenthzr.locationspoofer.ui.screen
 
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -15,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,6 +31,10 @@ import com.vincenthzr.locationspoofer.ui.theme.AppColors
 import com.vincenthzr.locationspoofer.ui.theme.noRippleClickable
 import com.vincenthzr.locationspoofer.viewmodel.MainViewModel
 import com.vincenthzr.locationspoofer.viewmodel.clearPinnedCollectedLocation
+import com.vincenthzr.locationspoofer.viewmodel.updateLatitude
+import com.vincenthzr.locationspoofer.viewmodel.updateLongitude
+import com.vincenthzr.locationspoofer.utils.CoordinateInputParser
+import com.vincenthzr.locationspoofer.utils.CoordinateUtils
 import top.yukonga.miuix.kmp.basic.Card as MiuixCard
 
 
@@ -39,6 +48,9 @@ fun CoordinateInputCard(
     onCustomClick: () -> Unit
 ) {
     val textSecondary = AppColors.textSecondary(isDark)
+    val context = LocalContext.current
+    var pasteCoordinateSystem by remember { mutableStateOf(PasteCoordinateSystem.WGS84) }
+    var datumMenuExpanded by remember { mutableStateOf(false) }
 
     MiuixCard(
         modifier = Modifier.fillMaxWidth(),
@@ -53,6 +65,69 @@ fun CoordinateInputCard(
                     isDark
                 )
                 Spacer(Modifier.weight(1f))
+                Box {
+                    TextButton(onClick = { datumMenuExpanded = true }) {
+                        Text(
+                            stringResource(R.string.coordinate_input_datum) + ": " + pasteCoordinateSystem.name,
+                            fontSize = 11.sp,
+                            color = AccentBlue
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = datumMenuExpanded,
+                        onDismissRequest = { datumMenuExpanded = false }
+                    ) {
+                        PasteCoordinateSystem.entries.forEach { system ->
+                            DropdownMenuItem(
+                                text = { Text(system.name) },
+                                onClick = {
+                                    pasteCoordinateSystem = system
+                                    datumMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                IconButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        val pastedText = clipboard?.primaryClip
+                            ?.takeIf { it.itemCount > 0 }
+                            ?.getItemAt(0)
+                            ?.coerceToText(context)
+                            ?.toString()
+                        val parsed = pastedText?.let(CoordinateInputParser::parse)
+                        if (parsed != null) {
+                            val wgs84 = when (pasteCoordinateSystem) {
+                                PasteCoordinateSystem.WGS84 -> CoordinateUtils.LatLng(parsed.latitude, parsed.longitude)
+                                PasteCoordinateSystem.GCJ02 -> CoordinateUtils.gcj02ToWgs84(parsed.latitude, parsed.longitude)
+                                PasteCoordinateSystem.BD09 -> {
+                                    val gcj02 = CoordinateUtils.bd09ToGcj02(parsed.latitude, parsed.longitude)
+                                    CoordinateUtils.gcj02ToWgs84(gcj02.lat, gcj02.lng)
+                                }
+                            }
+                            viewModel.updateLatitude(wgs84.lat.toString())
+                            viewModel.updateLongitude(wgs84.lng.toString())
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.coordinate_paste_success),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.coordinate_paste_invalid),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                ) {
+                    Icon(
+                        Icons.Outlined.ContentPaste,
+                        contentDescription = stringResource(R.string.paste_coordinates),
+                        tint = AccentBlue
+                    )
+                }
                 TextButton(
                     onClick = onCustomClick,
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
@@ -213,6 +288,8 @@ fun CoordinateInputCard(
         }
     }
 }
+
+private enum class PasteCoordinateSystem { WGS84, GCJ02, BD09 }
 
 @Composable
 fun coordinateFieldColors() = OutlinedTextFieldDefaults.colors(

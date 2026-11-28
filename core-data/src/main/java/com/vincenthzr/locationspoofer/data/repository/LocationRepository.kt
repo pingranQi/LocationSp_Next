@@ -12,6 +12,7 @@ import com.vincenthzr.locationspoofer.data.model.RootSolution
 import com.vincenthzr.locationspoofer.data.model.RoutePoint
 import com.vincenthzr.locationspoofer.data.state.SpoofingState
 import com.vincenthzr.locationspoofer.utils.ConfigManager
+import com.vincenthzr.locationspoofer.utils.RoutePointJsonCodec
 import com.vincenthzr.locationspoofer.utils.LSPosedManager
 import com.vincenthzr.locationspoofer.utils.RootManager
 import com.vincenthzr.locationspoofer.utils.SettingsManager
@@ -298,16 +299,8 @@ class LocationRepository(
         )
     }
 
-    private fun routePointsToJson(points: List<RoutePoint>): String {
-        val arr = JSONArray()
-        points.forEach { p ->
-            arr.put(JSONObject().apply {
-                put("lat", p.lat)
-                put("lng", p.lng)
-            })
-        }
-        return arr.toString()
-    }
+    private fun routePointsToJson(points: List<RoutePoint>): String =
+        RoutePointJsonCodec.encode(points)
 
     fun getSavedRoutes(): kotlinx.coroutines.flow.Flow<List<SavedRouteEntity>> {
         return savedRouteDao.getAllSavedRoutes()
@@ -318,13 +311,24 @@ class LocationRepository(
     }
 
     suspend fun insertSavedRoute(name: String, points: List<RoutePoint>) {
-        val pointsJson = routePointsToJson(points)
-        savedRouteDao.insertSavedRoute(
+        insertSavedRoutes(listOf(name to points))
+    }
+
+    /**
+     * Validates and encodes every route before writing anything, then inserts the batch
+     * through Room's list @Insert transaction. A malformed route therefore leaves the
+     * existing route library unchanged.
+     */
+    suspend fun insertSavedRoutes(routes: List<Pair<String, List<RoutePoint>>>) {
+        require(routes.isNotEmpty()) { "Route import batch is empty" }
+        val entities = routes.map { (name, points) ->
+            require(name.isNotBlank() && name.length <= 256) { "Route name is invalid" }
             SavedRouteEntity(
-                name = name,
-                pointsJson = pointsJson
+                name = name.trim(),
+                pointsJson = routePointsToJson(points)
             )
-        )
+        }
+        savedRouteDao.insertSavedRoutes(entities)
     }
 
 

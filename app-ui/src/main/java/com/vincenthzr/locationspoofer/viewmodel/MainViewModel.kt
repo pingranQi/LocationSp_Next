@@ -138,6 +138,7 @@ class MainViewModel(
     internal var continuousScanJob: Job? = null
 
     init {
+        restoreRouteDraft()
         initialize()
     }
 

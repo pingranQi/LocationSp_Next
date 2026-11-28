@@ -19,32 +19,178 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import com.vincenthzr.locationspoofer.utils.RouteSimplifier
 
 // MainViewModel 的路线规划、收藏位置/路线与自动巡航相关扩展函数
+
+private const val MAX_ROUTE_DRAFT_BYTES = 5 * 1024 * 1024
+
+internal fun MainViewModel.restoreRouteDraft() {
+    val raw = settingsRepository.routeDraftJson
+    if (raw.isBlank()) return
+    val points = runCatching {
+        val array = JSONArray(raw)
+        require(raw.toByteArray(Charsets.UTF_8).size <= MAX_ROUTE_DRAFT_BYTES)
+        require(array.length() in 1..100_000)
+        List(array.length()) { index ->
+            val item = array.getJSONObject(index)
+            RoutePoint(
+                lat = item.getDouble("lat"),
+                lng = item.getDouble("lng"),
+                waitSec = item.optDouble("waitSec", 0.0),
+                elevationMeters = if (item.has("elevationMeters") && !item.isNull("elevationMeters")) item.getDouble("elevationMeters") else null,
+                timestampEpochMillis = if (item.has("timestampEpochMillis") && !item.isNull("timestampEpochMillis")) item.getLong("timestampEpochMillis") else null
+            )
+        }.also { restored ->
+            restored.forEach { point ->
+                require(point.lat.isFinite() && point.lat in -90.0..90.0)
+                require(point.lng.isFinite() && point.lng in -180.0..180.0)
+                require(point.waitSec.isFinite() && point.waitSec in 0.0..86_400.0)
+                val elevation = point.elevationMeters
+                require(elevation == null || elevation.isFinite())
+                val timestamp = point.timestampEpochMillis
+                require(timestamp == null || timestamp >= 0L)
+            }
+        }
+    }.getOrElse {
+        settingsRepository.routeDraftJson = ""
+        emptyList()
+    }
+    if (points.isNotEmpty()) {
+        _uiState.update {
+            it.copy(
+                routePoints = points,
+                routePlanStage = RoutePlanStage.SELECTING,
+                routeUndoHistory = emptyList(),
+                routeRedoHistory = emptyList()
+            )
+        }
+    }
+}
+
+private fun MainViewModel.persistRouteDraft() {
+    val points = _uiState.value.routePoints
+    if (points.isEmpty()) {
+        settingsRepository.routeDraftJson = ""
+        return
+    }
+    val encoded = JSONArray().apply {
+        points.forEach { point ->
+            put(
+                JSONObject()
+                    .put("lat", point.lat)
+                    .put("lng", point.lng)
+                    .put("waitSec", point.waitSec)
+                    .put("elevationMeters", point.elevationMeters ?: JSONObject.NULL)
+                    .put("timestampEpochMillis", point.timestampEpochMillis ?: JSONObject.NULL)
+            )
+        }
+    }.toString()
+    settingsRepository.routeDraftJson = if (encoded.toByteArray(Charsets.UTF_8).size <= MAX_ROUTE_DRAFT_BYTES) encoded else ""
+}
+
+private const val MAX_ROUTE_UNDO_STEPS = 50
+
+private fun AppState.withRouteEdit(points: List<RoutePoint>): AppState =
+    copy(
+        routeUndoHistory = (routeUndoHistory + listOf(routePoints)).takeLast(MAX_ROUTE_UNDO_STEPS),
+        routeRedoHistory = emptyList(),
+        routePoints = points.toList()
+    )
 
 internal fun MainViewModel.enterRoutePlanning() {
     _uiState.update {
         it.copy(
             routePlanStage = RoutePlanStage.SELECTING,
             selectedCollectionRouteId = null,
-            routePoints = emptyList()
+            routePoints = emptyList(),
+            routeUndoHistory = emptyList(),
+            routeRedoHistory = emptyList()
         )
     }
+    persistRouteDraft()
 }
 
 /** 地图中心确认添加路点 */
-
 internal fun MainViewModel.addRoutePoint(lat: Double, lng: Double) {
-    _uiState.update { it.copy(routePoints = it.routePoints + RoutePoint(lat, lng)) }
+    if (!lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) return
+    _uiState.update { state ->
+        if (state.routePoints.size >= 100_000) state
+        else state.withRouteEdit(state.routePoints + RoutePoint(lat, lng))
+    }
+    persistRouteDraft()
 }
 
-/** 撤销最后一个路点 */
-
+/** 撤销最近一次路线编辑 */
 internal fun MainViewModel.undoLastRoutePoint() {
     _uiState.update { state ->
-        if (state.routePoints.isEmpty()) state
-        else state.copy(routePoints = state.routePoints.dropLast(1))
+        val previous = state.routeUndoHistory.lastOrNull() ?: return@update state
+        state.copy(
+            routePoints = previous,
+            routeUndoHistory = state.routeUndoHistory.dropLast(1),
+            routeRedoHistory = (state.routeRedoHistory + listOf(state.routePoints)).takeLast(MAX_ROUTE_UNDO_STEPS)
+        )
     }
+    persistRouteDraft()
+}
+
+internal fun MainViewModel.redoRouteEdit() {
+    _uiState.update { state ->
+        val next = state.routeRedoHistory.lastOrNull() ?: return@update state
+        state.copy(
+            routePoints = next,
+            routeUndoHistory = (state.routeUndoHistory + listOf(state.routePoints)).takeLast(MAX_ROUTE_UNDO_STEPS),
+            routeRedoHistory = state.routeRedoHistory.dropLast(1)
+        )
+    }
+    persistRouteDraft()
+}
+
+internal fun MainViewModel.removeRoutePoint(index: Int) {
+    _uiState.update { state ->
+        if (index !in state.routePoints.indices) state
+        else state.withRouteEdit(state.routePoints.toMutableList().also { it.removeAt(index) })
+    }
+    persistRouteDraft()
+}
+
+internal fun MainViewModel.moveRoutePoint(fromIndex: Int, toIndex: Int) {
+    _uiState.update { state ->
+        if (fromIndex !in state.routePoints.indices || toIndex !in state.routePoints.indices || fromIndex == toIndex) {
+            state
+        } else {
+            val points = state.routePoints.toMutableList()
+            val point = points.removeAt(fromIndex)
+            points.add(toIndex, point)
+            state.withRouteEdit(points)
+        }
+    }
+    persistRouteDraft()
+}
+
+internal fun MainViewModel.setRoutePointWait(index: Int, waitSeconds: Double) {
+    if (!waitSeconds.isFinite()) return
+    _uiState.update { state ->
+        if (index !in state.routePoints.indices) state
+        else {
+            val points = state.routePoints.toMutableList()
+            points[index] = points[index].copy(waitSec = waitSeconds.coerceIn(0.0, 86_400.0))
+            state.withRouteEdit(points)
+        }
+    }
+    persistRouteDraft()
+}
+
+internal fun MainViewModel.simplifyRoute(toleranceMeters: Double = 5.0) {
+    if (!toleranceMeters.isFinite() || toleranceMeters < 0.0) return
+    _uiState.update { state ->
+        val simplified = RouteSimplifier.simplify(state.routePoints, toleranceMeters)
+        if (simplified.size < 2 || simplified == state.routePoints) state
+        else state.withRouteEdit(simplified)
+    }
+    persistRouteDraft()
 }
 
 /** 结束选点 → READY */
@@ -61,9 +207,12 @@ internal fun MainViewModel.restartSelectingPoints() {
         it.copy(
             routePoints = emptyList(),
             routePlanStage = RoutePlanStage.SELECTING,
-            selectedCollectionRouteId = null
+            selectedCollectionRouteId = null,
+            routeUndoHistory = emptyList(),
+            routeRedoHistory = emptyList()
         )
     }
+    persistRouteDraft()
 }
 
 /** 设置路线运行模式（同时写盘，下次打开沿用，见 issue #4） */
@@ -79,12 +228,16 @@ internal fun MainViewModel.saveRoute(name: String, points: List<RoutePoint>) {
     }
 }
 
+/** Persist an imported group as one all-or-nothing route-library operation. */
+internal suspend fun MainViewModel.saveRoutes(routes: List<Pair<String, List<RoutePoint>>>) {
+    locationRepository.insertSavedRoutes(routes)
+}
+
 internal fun MainViewModel.deleteSavedRoute(route: com.vincenthzr.locationspoofer.data.model.SavedRoute) {
     viewModelScope.launch(Dispatchers.IO) {
-        // 我们通过寻找匹配名称的实体进行删除
-        // （有点取巧，但目前有效，或者我们可以在 DAO 中添加按名称删除的功能）
+        // Prefer the stable Room ID so duplicate route names remain independently deletable.
         val routes = locationRepository.getSavedRoutes().first()
-        val entity = routes.find { it.name == route.name }
+        val entity = routes.find { if (route.id > 0L) it.id == route.id else it.name == route.name }
         if (entity != null) {
             locationRepository.deleteSavedRoute(entity)
         }
@@ -388,9 +541,12 @@ internal fun MainViewModel.cancelRoutePlanning() {
     _uiState.update {
         it.copy(
             routePlanStage = RoutePlanStage.IDLE,
-            routePoints = emptyList()
+            routePoints = emptyList(),
+            routeUndoHistory = emptyList(),
+            routeRedoHistory = emptyList()
         )
     }
+    persistRouteDraft()
 }
 
 internal fun MainViewModel.stopRoutePlanning() {
@@ -406,9 +562,12 @@ internal fun MainViewModel.stopRoutePlanning() {
             it.copy(
                 isSpoofingActive = false,
                 routePlanStage = RoutePlanStage.IDLE,
-                routePoints = emptyList()
+                routePoints = emptyList(),
+                routeUndoHistory = emptyList(),
+                routeRedoHistory = emptyList()
             )
         }
+        persistRouteDraft()
     }
 }
 
@@ -566,9 +725,12 @@ internal fun MainViewModel.loadSavedRoute(route: com.vincenthzr.locationspoofer.
     _uiState.update {
         it.copy(
             routePoints = route.points,
+            routeUndoHistory = emptyList(),
+            routeRedoHistory = emptyList(),
             routePlanStage = com.vincenthzr.locationspoofer.data.model.RoutePlanStage.READY
         )
     }
+    persistRouteDraft()
 }
 
 // 搜索
