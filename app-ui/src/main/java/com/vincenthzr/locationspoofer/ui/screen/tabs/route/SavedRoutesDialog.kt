@@ -161,31 +161,37 @@ fun SavedRoutesDialog(
                         RouteScenarioCodec.decode(bytes.toString(Charsets.UTF_8))
                     }
                 }
-                result.onSuccess { scenario ->
-                    viewModel.saveRoute(scenario.name, scenario.points)
-                    viewModel.setRouteRunMode(scenario.runMode)
-                    viewModel.setRouteSimMode(scenario.speedMode)
-                    viewModel.setCustomSpeedMs(scenario.customSpeedMs)
-                    viewModel.setUseRealRoute(scenario.useRealRoute)
-                    viewModel.setStopAtDestination(scenario.stopAtDestination)
-                    viewModel.setEnableStepSimulation(scenario.enableStepSimulation)
-                    viewModel.setStepCadenceSpm(scenario.stepCadenceSpm)
-                    viewModel.setIsAutoCadence(scenario.isAutoCadence)
-                    viewModel.setPaceVariationSec(scenario.paceVariationSec)
-                    viewModel.setFatigueLevel(scenario.fatigueLevel)
-                    viewModel.setFirstKmBiasSec(scenario.firstKmBiasSec)
-                    viewModel.setFatigueStartKm(scenario.fatigueStartKm)
-                    if (uiState.mockWifi != scenario.mockWifi) viewModel.toggleMockWifi()
-                    if (uiState.mockCell != scenario.mockCell) viewModel.toggleMockCell()
-                    if (uiState.mockBluetooth != scenario.mockBluetooth) viewModel.toggleMockBluetooth()
-                    if (uiState.enableJitter != scenario.enableJitter) viewModel.toggleEnableJitter()
-                    viewModel.setAltitude(scenario.altitudeInput)
-                    viewModel.setAltitudeVariation(scenario.altitudeVariationM)
-                    viewModel.setSatelliteCount(scenario.satelliteCountInput)
-                    Toast.makeText(context, context.getString(R.string.scenario_import_success), Toast.LENGTH_LONG).show()
-                }.onFailure {
+                val scenario = result.getOrElse {
                     Toast.makeText(context, context.getString(R.string.scenario_operation_failed), Toast.LENGTH_LONG).show()
+                    return@launch
                 }
+                val saveResult = runCatching {
+                    viewModel.saveRoutes(listOf(scenario.name to scenario.points))
+                }
+                if (saveResult.isFailure) {
+                    Toast.makeText(context, context.getString(R.string.scenario_operation_failed), Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                viewModel.setRouteRunMode(scenario.runMode)
+                viewModel.setRouteSimMode(scenario.speedMode)
+                viewModel.setCustomSpeedMs(scenario.customSpeedMs)
+                viewModel.setUseRealRoute(scenario.useRealRoute)
+                viewModel.setStopAtDestination(scenario.stopAtDestination)
+                viewModel.setEnableStepSimulation(scenario.enableStepSimulation)
+                viewModel.setStepCadenceSpm(scenario.stepCadenceSpm)
+                viewModel.setIsAutoCadence(scenario.isAutoCadence)
+                viewModel.setPaceVariationSec(scenario.paceVariationSec)
+                viewModel.setFatigueLevel(scenario.fatigueLevel)
+                viewModel.setFirstKmBiasSec(scenario.firstKmBiasSec)
+                viewModel.setFatigueStartKm(scenario.fatigueStartKm)
+                if (uiState.mockWifi != scenario.mockWifi) viewModel.toggleMockWifi()
+                if (uiState.mockCell != scenario.mockCell) viewModel.toggleMockCell()
+                if (uiState.mockBluetooth != scenario.mockBluetooth) viewModel.toggleMockBluetooth()
+                if (uiState.enableJitter != scenario.enableJitter) viewModel.toggleEnableJitter()
+                viewModel.setAltitude(scenario.altitudeInput)
+                viewModel.setAltitudeVariation(scenario.altitudeVariationM)
+                viewModel.setSatelliteCount(scenario.satelliteCountInput)
+                Toast.makeText(context, context.getString(R.string.scenario_import_success), Toast.LENGTH_LONG).show()
             }
         }
     }
