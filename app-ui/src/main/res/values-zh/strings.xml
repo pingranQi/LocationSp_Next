@@ -699,4 +699,12 @@
     <string name="paste_coordinates">粘贴坐标</string>
     <string name="coordinate_paste_success">坐标已导入</string>
     <string name="coordinate_paste_invalid">剪贴板中没有可识别的坐标</string>
+    <string name="gpx_import">导入 GPX</string>
+    <string name="gpx_export_hint">从路线条目导出</string>
+    <string name="gpx_export">导出 GPX</string>
+    <string name="gpx_import_success">已导入 %1$d 条路线</string>
+    <string name="gpx_export_success">GPX 已导出</string>
+    <string name="gpx_operation_failed">GPX 操作失败，请检查文件格式和访问权限</string>
+    <string name="gpx_route_too_short">路线至少需要两个点才能导出</string>
+    <string name="imported_gpx_route">导入的 GPX 路线</string>
 </resources>
