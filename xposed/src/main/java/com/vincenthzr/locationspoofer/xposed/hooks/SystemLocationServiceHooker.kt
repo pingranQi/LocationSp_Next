@@ -261,7 +261,9 @@ private fun LocationHooker.ensureCallbackHooked(callback: Any, vararg deliveryMe
                     val isGlobal = config?.optBoolean("system_hook_global_mode", false) == true
                     val isTracked = (binder != null && (activeListenerBinders.containsKey(binder) || activeCallbackBinders.containsKey(binder))) ||
                             spoofedListenerInstances.contains(callbackInstance)
-                    val isTarget = isTracked || isGlobal
+                    // Global mode registrations are admitted by isTargetCaller() at the Binder entry point.
+                    // hookAllMethods covers every instance of this class, so class-wide global bypass is unsafe.
+                    val isTarget = isTracked
                     if (isTarget && config != null && config.optBoolean("active", false)) {
                         val motion = getCurrentSpoofedMotion("WGS-84")
                         if (motion != null) {
@@ -1388,7 +1390,7 @@ internal fun LocationHooker.hookSystemLocationService(classLoader: ClassLoader) 
                     val config = readConfig()
                     if (config != null && config.optBoolean("active", false)) {
                         val isGlobal = config.optBoolean("system_hook_global_mode", false)
-                        var isTarget = isGlobal
+                        var isTarget = false
                         if (!isTarget) {
                             val listener = try { XposedHelpers.getObjectField(chain.thisObject, "mListener") } catch (_: Throwable) { null }
                             val binder = (listener as? IInterface)?.asBinder() ?: (listener as? IBinder)
