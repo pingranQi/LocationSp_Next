@@ -450,7 +450,9 @@ internal fun MainViewModel.cancelRoutePlanning() {
     _uiState.update {
         it.copy(
             routePlanStage = RoutePlanStage.IDLE,
-            routePoints = emptyList()
+            routePoints = emptyList(),
+            routeUndoHistory = emptyList(),
+            routeRedoHistory = emptyList()
         )
     }
 }
@@ -628,6 +630,8 @@ internal fun MainViewModel.loadSavedRoute(route: com.vincenthzr.locationspoofer.
     _uiState.update {
         it.copy(
             routePoints = route.points,
+            routeUndoHistory = emptyList(),
+            routeRedoHistory = emptyList(),
             routePlanStage = com.vincenthzr.locationspoofer.data.model.RoutePlanStage.READY
         )
     }
