@@ -48,12 +48,13 @@ class RouteSimplifierTest {
     }
     @Test
     fun semanticWaypointSplitsIndependentGeometryRanges() {
+        val anchor = RoutePoint(31.0003, 121.0009, waitSec = 8.0)
         val before = listOf(
             RoutePoint(31.0000, 121.0000),
             RoutePoint(31.0002, 121.0003),
-            RoutePoint(31.0000, 121.0006)
+            RoutePoint(31.0000, 121.0006),
+            anchor
         )
-        val anchor = RoutePoint(31.0003, 121.0009, waitSec = 8.0)
         val after = listOf(
             anchor,
             RoutePoint(31.0006, 121.0012),
