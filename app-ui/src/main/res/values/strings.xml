@@ -746,4 +746,8 @@ Error details: %s</string>
     <string name="route_diag_playing">Playing</string>
     <string name="route_diag_available">Available</string>
     <string name="route_diag_unavailable">Unavailable</string>
+    <string name="route_diag_update_interval">Update interval</string>
+    <string name="route_diag_route_deviation">UI / motion position deviation</string>
+    <string name="route_diag_root_access">Root access</string>
+    <string name="route_diag_xposed">LSPosed active</string>
 </resources>
