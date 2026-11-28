@@ -558,4 +558,8 @@
     <string name="route_diag_playing">قيد التشغيل</string>
     <string name="route_diag_available">متاح</string>
     <string name="route_diag_unavailable">غير متاح</string>
+    <string name="route_diag_update_interval">فاصل التحديث</string>
+    <string name="route_diag_route_deviation">انحراف موضع الواجهة عن الحركة</string>
+    <string name="route_diag_root_access">صلاحية Root</string>
+    <string name="route_diag_xposed">حالة LSPosed</string>
 </resources>
