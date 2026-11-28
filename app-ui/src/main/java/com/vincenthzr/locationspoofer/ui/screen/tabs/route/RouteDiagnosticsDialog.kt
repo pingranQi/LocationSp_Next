@@ -40,7 +40,7 @@ fun RouteDiagnosticsDialog(
                 DiagnosticRow(stringResource(R.string.route_diag_simulation), if (uiState.isSpoofingActive) stringResource(R.string.route_diag_active) else stringResource(R.string.route_diag_inactive))
                 DiagnosticRow(
                     stringResource(R.string.route_diag_motion),
-                    motionState.mode.name + " · " + if (motionState.paused) stringResource(R.string.route_diag_paused) else stringResource(R.string.route_diag_playing)
+                    motionState.mode.name + " · " + (if (motionState.paused) stringResource(R.string.route_diag_paused) else stringResource(R.string.route_diag_playing))
                 )
                 DiagnosticRow(stringResource(R.string.route_diag_waypoints), points.size.toString())
                 DiagnosticRow(stringResource(R.string.route_diag_distance), String.format(java.util.Locale.US, "%.2f km", distanceMeters / 1000.0))
@@ -51,7 +51,7 @@ fun RouteDiagnosticsDialog(
                 )
                 DiagnosticRow(stringResource(R.string.route_diag_mock_wifi), (if (uiState.mockWifi) stringResource(R.string.route_diag_enabled) else stringResource(R.string.route_diag_disabled)) + " · " + (if (uiState.canMockWifi) stringResource(R.string.route_diag_available) else stringResource(R.string.route_diag_unavailable)))
                 DiagnosticRow(stringResource(R.string.route_diag_mock_cell), if (uiState.mockCell) stringResource(R.string.status_enabled) else stringResource(R.string.status_disabled))
-                DiagnosticRow(stringResource(R.string.route_diag_mock_bluetooth), if (uiState.mockBluetooth) stringResource(R.string.status_enabled) else stringResource(R.string.status_disabled))
+                DiagnosticRow(stringResource(R.string.route_diag_mock_bluetooth), (if (uiState.mockBluetooth) stringResource(R.string.route_diag_enabled) else stringResource(R.string.route_diag_disabled)) + " · " + (if (uiState.canMockBluetooth) stringResource(R.string.route_diag_available) else stringResource(R.string.route_diag_unavailable)))
                 if (uiState.isFetchingRoute) {
                     Text(stringResource(R.string.route_diag_fetching), color = MaterialTheme.colorScheme.primary)
                 }
