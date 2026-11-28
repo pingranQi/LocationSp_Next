@@ -33,7 +33,8 @@ License status is a preliminary repository-level review, not legal advice. Befor
 - [x] Pure-Kotlin parser for decimal coordinate pairs, geo: URIs, Google Maps @lat,lng links, !3d/!4d links, and common coordinate query parameters.
 - [x] Reject non-finite and out-of-range coordinates; preserve input values without guessing a datum conversion.
 - [x] Wire parser into the coordinate-entry UI with a clipboard paste action and localized feedback. A coordinate-system selector remains required before any automatic datum conversion.
-- [x] Add a bounded, XXE-safe GPX 1.0/1.1 codec with segment, timestamp, elevation, route and waypoint preservation plus round-trip tests. UI import/export wiring remains pending.
+- [x] Add a bounded, XXE-safe GPX 1.0/1.1 codec with segment, timestamp, elevation, route and waypoint preservation plus round-trip tests.
+- [x] Add GPX file import to the route library and per-route GPX export using Android document picker APIs. Track segments are imported as separate saved routes to avoid joining disconnected segments.
 - [ ] Add versioned JSON backup migration tests, partial-import preview, and atomic restore/rollback.
 - [ ] Add duplicate-name handling, route metadata, tags, favorites, and stable ordering.
 
@@ -64,5 +65,6 @@ This integration does not add stealth, mock-indicator removal, third-party app a
 - CoordinateInputCard.kt: clipboard import action with localized English, Chinese, and Arabic feedback.
 - GpxCodec.kt: bounded GPX 1.0/1.1 parser and GPX 1.1 writer, preserving track segments, timestamps, elevation, routes, and waypoints.
 - GpxCodecTest.kt: GPX round-trip, metadata, segment, validation, size-limit, and XXE regression tests.
+- SavedRoutesDialog.kt: GPX document-picker import and individual saved-route export, with localized feedback.
 
 No reference repository's source files have been copied into this branch.
