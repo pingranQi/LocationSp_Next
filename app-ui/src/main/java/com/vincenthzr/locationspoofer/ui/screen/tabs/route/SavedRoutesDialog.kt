@@ -15,6 +15,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Route
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,7 +44,20 @@ import com.vincenthzr.locationspoofer.viewmodel.MainViewModel
 import com.vincenthzr.locationspoofer.viewmodel.deleteSavedRoute
 import com.vincenthzr.locationspoofer.viewmodel.loadSavedRoute
 import com.vincenthzr.locationspoofer.viewmodel.saveRoute
+import com.vincenthzr.locationspoofer.viewmodel.setRouteRunMode
+import com.vincenthzr.locationspoofer.viewmodel.setRouteSimMode
+import com.vincenthzr.locationspoofer.viewmodel.setCustomSpeedMs
+import com.vincenthzr.locationspoofer.viewmodel.setUseRealRoute
+import com.vincenthzr.locationspoofer.viewmodel.setStopAtDestination
+import com.vincenthzr.locationspoofer.viewmodel.setEnableStepSimulation
+import com.vincenthzr.locationspoofer.viewmodel.setStepCadenceSpm
+import com.vincenthzr.locationspoofer.viewmodel.setIsAutoCadence
+import com.vincenthzr.locationspoofer.viewmodel.setPaceVariationSec
+import com.vincenthzr.locationspoofer.viewmodel.setFatigueLevel
+import com.vincenthzr.locationspoofer.viewmodel.setFirstKmBiasSec
+import com.vincenthzr.locationspoofer.viewmodel.setFatigueStartKm
 import com.vincenthzr.locationspoofer.utils.GpxCodec
+import com.vincenthzr.locationspoofer.utils.RouteScenarioCodec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,6 +76,7 @@ fun SavedRoutesDialog(
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     var pendingExport by remember { mutableStateOf<com.vincenthzr.locationspoofer.data.model.SavedRoute?>(null) }
+    var pendingScenario by remember { mutableStateOf<RouteScenarioCodec.Scenario?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/gpx+xml")
@@ -85,6 +100,76 @@ fun SavedRoutesDialog(
                     else context.getString(R.string.gpx_operation_failed),
                     Toast.LENGTH_LONG
                 ).show()
+            }
+        }
+    }
+
+    val scenarioExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        val scenario = pendingScenario
+        pendingScenario = null
+        if (uri != null && scenario != null) {
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val json = RouteScenarioCodec.encode(scenario)
+                        context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                            it.write(json)
+                        } ?: error("Unable to open scenario destination")
+                    }
+                }
+                Toast.makeText(
+                    context,
+                    if (result.isSuccess) context.getString(R.string.scenario_export_success)
+                    else context.getString(R.string.scenario_operation_failed),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    val scenarioImportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                            val output = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            var total = 0
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read < 0) break
+                                total += read
+                                require(total <= RouteScenarioCodec.MAX_BYTES) { "Scenario file exceeds size limit" }
+                                output.write(buffer, 0, read)
+                            }
+                            output.toByteArray()
+                        } ?: error("Unable to read scenario file")
+                        RouteScenarioCodec.decode(bytes.toString(Charsets.UTF_8))
+                    }
+                }
+                result.onSuccess { scenario ->
+                    viewModel.saveRoute(scenario.name, scenario.points)
+                    viewModel.setRouteRunMode(scenario.runMode)
+                    viewModel.setRouteSimMode(scenario.speedMode)
+                    viewModel.setCustomSpeedMs(scenario.customSpeedMs)
+                    viewModel.setUseRealRoute(scenario.useRealRoute)
+                    viewModel.setStopAtDestination(scenario.stopAtDestination)
+                    viewModel.setEnableStepSimulation(scenario.enableStepSimulation)
+                    viewModel.setStepCadenceSpm(scenario.stepCadenceSpm)
+                    viewModel.setIsAutoCadence(scenario.isAutoCadence)
+                    viewModel.setPaceVariationSec(scenario.paceVariationSec)
+                    viewModel.setFatigueLevel(scenario.fatigueLevel)
+                    viewModel.setFirstKmBiasSec(scenario.firstKmBiasSec)
+                    viewModel.setFatigueStartKm(scenario.fatigueStartKm)
+                    Toast.makeText(context, context.getString(R.string.scenario_import_success), Toast.LENGTH_LONG).show()
+                }.onFailure {
+                    Toast.makeText(context, context.getString(R.string.scenario_operation_failed), Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -211,12 +296,24 @@ fun SavedRoutesDialog(
                     }
                 }
 
-                OutlinedButton(
-                    onClick = { importLauncher.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml")) },
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(stringResource(R.string.gpx_import), fontSize = 13.sp)
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml")) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(stringResource(R.string.gpx_import), fontSize = 12.sp)
+                    }
+                    OutlinedButton(
+                        onClick = { scenarioImportLauncher.launch(arrayOf("application/json", "text/json", "text/plain")) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(stringResource(R.string.scenario_import), fontSize = 12.sp)
+                    }
                 }
 
                 if (uiState.savedRoutes.isEmpty()) {
@@ -370,6 +467,41 @@ fun SavedRoutesDialog(
                                         Icon(
                                             Icons.Rounded.FileDownload,
                                             contentDescription = stringResource(R.string.gpx_export),
+                                            tint = AccentBlue,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            if (route.points.size < 2) {
+                                                Toast.makeText(context, context.getString(R.string.gpx_route_too_short), Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                pendingScenario = RouteScenarioCodec.Scenario(
+                                                    name = route.name,
+                                                    points = route.points,
+                                                    runMode = uiState.routeRunMode,
+                                                    speedMode = uiState.routeSimMode,
+                                                    customSpeedMs = uiState.customSpeedMs,
+                                                    useRealRoute = uiState.useRealRoute,
+                                                    stopAtDestination = uiState.stopAtDestination,
+                                                    enableStepSimulation = uiState.enableStepSimulation,
+                                                    stepCadenceSpm = uiState.stepCadenceSpm,
+                                                    isAutoCadence = uiState.isAutoCadence,
+                                                    paceVariationSec = uiState.paceVariationSec,
+                                                    fatigueLevel = uiState.fatigueLevel,
+                                                    firstKmBiasSec = uiState.firstKmBiasSec,
+                                                    fatigueStartKm = uiState.fatigueStartKm
+                                                )
+                                                val safeName = route.name.replace(Regex("[^A-Za-z0-9._-]+"), "_").trim('_').ifBlank { "scenario" }
+                                                scenarioExportLauncher.launch("$safeName.scenario.json")
+                                            }
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Share,
+                                            contentDescription = stringResource(R.string.scenario_export),
                                             tint = AccentBlue,
                                             modifier = Modifier.size(18.dp)
                                         )
