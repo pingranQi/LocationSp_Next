@@ -95,6 +95,18 @@ internal fun MainViewModel.moveRoutePoint(fromIndex: Int, toIndex: Int) {
     }
 }
 
+internal fun MainViewModel.setRoutePointWait(index: Int, waitSeconds: Double) {
+    if (!waitSeconds.isFinite()) return
+    _uiState.update { state ->
+        if (index !in state.routePoints.indices) state
+        else {
+            val points = state.routePoints.toMutableList()
+            points[index] = points[index].copy(waitSec = waitSeconds.coerceIn(0.0, 86_400.0))
+            state.withRouteEdit(points)
+        }
+    }
+}
+
 /** 结束选点 → READY */
 
 internal fun MainViewModel.finishSelectingPoints() {
