@@ -3,6 +3,7 @@ package com.vincenthzr.locationspoofer.utils
 import com.vincenthzr.locationspoofer.data.model.RoutePoint
 import com.vincenthzr.locationspoofer.data.model.RouteRunMode
 import com.vincenthzr.locationspoofer.data.model.SimMode
+import com.vincenthzr.locationspoofer.utils.CoordinateUtils
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -52,7 +53,8 @@ object RouteScenarioCodec {
         val enableJitter: Boolean = true,
         val altitudeInput: String = "0.0",
         val altitudeVariationM: Int = 10,
-        val satelliteCountInput: String = "20"
+        val satelliteCountInput: String = "20",
+        val coordinateSystem: String = "WGS84"
     )
 
     data class Scenario(
@@ -106,7 +108,8 @@ object RouteScenarioCodec {
             enableJitter = scenario.enableJitter,
             altitudeInput = scenario.altitudeInput,
             altitudeVariationM = scenario.altitudeVariationM,
-            satelliteCountInput = scenario.satelliteCountInput
+            satelliteCountInput = scenario.satelliteCountInput,
+            coordinateSystem = scenario.coordinateSystem
         )
         val encoded = json.encodeToString(payload)
         require(encoded.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "Scenario file exceeds size limit" }
@@ -120,9 +123,9 @@ object RouteScenarioCodec {
         require(payload.version == FORMAT_VERSION) { "Unsupported scenario version" }
         val scenario = Scenario(
             name = payload.name.ifBlank { "Imported scenario" },
-            points = payload.points.map {
+            points = normalizeCoordinates(payload.points.map {
                 RoutePoint(it.lat, it.lng, it.waitSec, it.elevationMeters, it.timestampEpochMillis)
-            },
+            }, payload.coordinateSystem),
             runMode = enumValueOrDefault(payload.runMode, RouteRunMode.LOOP),
             speedMode = enumValueOrDefault(payload.speedMode, SimMode.WALKING),
             customSpeedMs = payload.customSpeedMs,
@@ -141,7 +144,8 @@ object RouteScenarioCodec {
             enableJitter = payload.enableJitter,
             altitudeInput = payload.altitudeInput,
             altitudeVariationM = payload.altitudeVariationM,
-            satelliteCountInput = payload.satelliteCountInput
+            satelliteCountInput = payload.satelliteCountInput,
+            coordinateSystem = "WGS84"
         )
         validate(scenario)
         return scenario
@@ -149,9 +153,26 @@ object RouteScenarioCodec {
 
     private inline fun <reified T : Enum<T>> enumValueOrDefault(value: String, fallback: T): T =
         enumValues<T>().firstOrNull { it.name == value } ?: fallback
+    
+    private fun normalizeCoordinates(points: List<RoutePoint>, sourceSystem: String): List<RoutePoint> =
+        when (sourceSystem) {
+            "WGS84" -> points
+            "GCJ02" -> points.map { point ->
+                val wgs = CoordinateUtils.gcj02ToWgs84(point.lat, point.lng)
+                point.copy(lat = wgs.lat, lng = wgs.lng)
+            }
+            "BD09" -> points.map { point ->
+                val gcj = CoordinateUtils.bd09ToGcj02(point.lat, point.lng)
+                val wgs = CoordinateUtils.gcj02ToWgs84(gcj.lat, gcj.lng)
+                point.copy(lat = wgs.lat, lng = wgs.lng)
+            }
+            else -> throw IllegalArgumentException("Coordinate system is unsupported")
+        }
+
 
     private fun validate(scenario: Scenario) {
         require(scenario.name.isNotBlank() && scenario.name.length <= 256) { "Scenario name is invalid" }
+        require(scenario.coordinateSystem in setOf("WGS84", "GCJ02", "BD09")) { "Coordinate system is unsupported" }
         require(scenario.points.size in 2..MAX_POINTS) { "Scenario must contain between 2 and $MAX_POINTS route points" }
         scenario.points.forEach { point ->
             require(point.lat.isFinite() && point.lat in -90.0..90.0) { "Latitude is out of range" }
