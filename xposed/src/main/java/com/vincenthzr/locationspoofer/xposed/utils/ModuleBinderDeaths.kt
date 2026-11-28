@@ -48,10 +48,21 @@ internal object ModuleBinderDeaths {
         }
     }
 
+    /**
+     * Close registrations for the retiring hook generation. This singleton is reused after
+     * LSPosed hot reload, so close must not permanently disable future watch() calls.
+     */
     @Synchronized
     fun close() {
         closed = true
-        entries.forEach { (binder, entry) -> runCatching { binder.unlinkToDeath(entry.recipient, 0) } }
+        val snapshot = entries.toList()
         entries.clear()
+        try {
+            snapshot.forEach { (binder, entry) ->
+                runCatching { binder.unlinkToDeath(entry.recipient, 0) }
+            }
+        } finally {
+            closed = false
+        }
     }
 }
