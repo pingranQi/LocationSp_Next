@@ -27,7 +27,14 @@ class RouteScenarioCodecTest {
             paceVariationSec = 12,
             fatigueLevel = 2,
             firstKmBiasSec = -5,
-            fatigueStartKm = "3.5"
+            fatigueStartKm = "3.5",
+            mockWifi = false,
+            mockCell = true,
+            mockBluetooth = false,
+            enableJitter = false,
+            altitudeInput = "120.5",
+            altitudeVariationM = 35,
+            satelliteCountInput = "18"
         )
 
         val decoded = RouteScenarioCodec.decode(RouteScenarioCodec.encode(source))
