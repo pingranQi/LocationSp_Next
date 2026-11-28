@@ -117,7 +117,7 @@ class RootManager {
      */
     private fun buildSessionCommand(command: String): String {
         val launcher = "printf '$PROCESS_GROUP_MARKER%s\\n' \"\$\$\"; exec sh -c \"\$1\""
-        return "setsid sh -c \${shellQuote(launcher)} sh \${shellQuote(command)}"
+        return "setsid sh -c ${shellQuote(launcher)} sh ${shellQuote(command)}"
     }
 
     private fun terminateProcessGroup(processGroupId: Long) {
@@ -200,7 +200,7 @@ class RootManager {
             }
 
             if (!activeProcess.waitFor(COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                Log.e(TAG, "Root command timed out after \${COMMAND_TIMEOUT_SECONDS}s")
+                Log.e(TAG, "Root command timed out after " + COMMAND_TIMEOUT_SECONDS + "s")
                 reader.join(250)
                 val pgid = processGroupId.get()
                 if (pgid > 1L) terminateProcessGroup(pgid)
@@ -222,7 +222,7 @@ class RootManager {
             }
             val result = synchronized(output) { output.toString() }
             if (activeProcess.exitValue() == 0) result.ifEmpty { "SUCCESS" } else {
-                Log.e(TAG, "Root command failed (\${activeProcess.exitValue()}): \${result.take(2000)}")
+                Log.e(TAG, "Root command failed (" + activeProcess.exitValue() + "): " + result.take(2000))
                 "ERROR"
             }
         } catch (error: Exception) {
