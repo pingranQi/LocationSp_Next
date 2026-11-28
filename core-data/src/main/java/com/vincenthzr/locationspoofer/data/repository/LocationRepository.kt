@@ -311,13 +311,24 @@ class LocationRepository(
     }
 
     suspend fun insertSavedRoute(name: String, points: List<RoutePoint>) {
-        val pointsJson = routePointsToJson(points)
-        savedRouteDao.insertSavedRoute(
+        insertSavedRoutes(listOf(name to points))
+    }
+
+    /**
+     * Validates and encodes every route before writing anything, then inserts the batch
+     * through Room's list @Insert transaction. A malformed route therefore leaves the
+     * existing route library unchanged.
+     */
+    suspend fun insertSavedRoutes(routes: List<Pair<String, List<RoutePoint>>>) {
+        require(routes.isNotEmpty()) { "Route import batch is empty" }
+        val entities = routes.map { (name, points) ->
+            require(name.isNotBlank() && name.length <= 256) { "Route name is invalid" }
             SavedRouteEntity(
-                name = name,
-                pointsJson = pointsJson
+                name = name.trim(),
+                pointsJson = routePointsToJson(points)
             )
-        )
+        }
+        savedRouteDao.insertSavedRoutes(entities)
     }
 
 
