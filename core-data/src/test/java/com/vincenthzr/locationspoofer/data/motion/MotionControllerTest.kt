@@ -265,6 +265,35 @@ class MotionControllerTest {
     }
 
     @Test
+    fun `seeking jumps to a deterministic route fraction and continues from there`() {
+        startRoute()
+        controller.seekToProgress(0.25f)
+        assertEquals(500.0, GeoMath.distance(start, here()), 0.5)
+        assertEquals(0.25f, controller.state.value.playbackProgress, 1e-4f)
+        awaitUntil { sink.routes.any { kotlin.math.abs(it.offset - 500.0) < 0.1 } }
+
+        advance(5_000)
+        assertEquals(510.0, GeoMath.distance(start, here()), 0.5)
+    }
+
+    @Test
+    fun `seeking while paused changes the resume point without starting playback`() {
+        startRoute()
+        advance(2_000)
+        controller.pause()
+        controller.seekToProgress(0.5f)
+
+        assertTrue(controller.state.value.paused)
+        assertEquals(1_000.0, GeoMath.distance(start, here()), 0.5)
+        advance(3_000)
+        assertEquals(1_000.0, GeoMath.distance(start, here()), 0.5)
+
+        controller.resume()
+        assertFalse(controller.state.value.paused)
+        awaitUntil { sink.routes.any { kotlin.math.abs(it.offset - 1_000.0) < 0.1 } }
+    }
+
+    @Test
     fun `stopping clears the session`() {
         startRoute()
         controller.onStopped()
