@@ -566,4 +566,5 @@
     <string name="route_diag_elevation_profile">مخطط الارتفاع</string>
     <string name="route_diag_no_elevation">لا تتوفر بيانات ارتفاع لهذا المسار.</string>
     <string name="coordinate_input_datum">مرجع إحداثيات اللصق</string>
+    <string name="done">تم</string>
 </resources>
