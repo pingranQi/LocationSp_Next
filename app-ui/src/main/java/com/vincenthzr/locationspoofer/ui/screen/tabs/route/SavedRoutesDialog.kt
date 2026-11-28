@@ -1,6 +1,9 @@
 package com.vincenthzr.locationspoofer.ui.screen.tabs.route
 
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,9 +13,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Route
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,12 +35,19 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.vincenthzr.locationspoofer.ui.R
 import com.vincenthzr.locationspoofer.data.model.AppState
+import com.vincenthzr.locationspoofer.data.model.RoutePoint
 import com.vincenthzr.locationspoofer.ui.components.AppMapController
 import com.vincenthzr.locationspoofer.ui.theme.AccentBlue
 import com.vincenthzr.locationspoofer.ui.theme.AccentGreen
 import com.vincenthzr.locationspoofer.viewmodel.MainViewModel
 import com.vincenthzr.locationspoofer.viewmodel.deleteSavedRoute
 import com.vincenthzr.locationspoofer.viewmodel.loadSavedRoute
+import com.vincenthzr.locationspoofer.viewmodel.saveRoute
+import com.vincenthzr.locationspoofer.utils.GpxCodec
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.rememberCoroutineScope
 
 @Composable
 fun SavedRoutesDialog(
@@ -45,6 +60,88 @@ fun SavedRoutesDialog(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    var pendingExport by remember { mutableStateOf<com.vincenthzr.locationspoofer.data.model.SavedRoute?>(null) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/gpx+xml")
+    ) { uri: Uri? ->
+        val route = pendingExport
+        pendingExport = null
+        if (uri != null && route != null) {
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val points = route.points.map { GpxCodec.Point(it.lat, it.lng) }
+                        val xml = GpxCodec.writeTrack(route.name, listOf(points))
+                        context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                            it.write(xml)
+                        } ?: error("Unable to open destination")
+                    }
+                }
+                Toast.makeText(
+                    context,
+                    if (result.isSuccess) context.getString(R.string.gpx_export_success)
+                    else context.getString(R.string.gpx_operation_failed),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                            val output = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(8192)
+                            var total = 0
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read < 0) break
+                                total += read
+                                require(total <= GpxCodec.MAX_DOCUMENT_BYTES) { "GPX file exceeds size limit" }
+                                output.write(buffer, 0, read)
+                            }
+                            output.toByteArray()
+                        } ?: error("Unable to read selected file")
+                        val document = GpxCodec.parse(bytes)
+                        val imported = mutableListOf<Pair<String, List<GpxCodec.Point>>>()
+                        document.tracks.forEachIndexed { trackIndex, track ->
+                            val validSegments = track.segments.filter { it.size >= 2 }
+                            validSegments.forEachIndexed { segmentIndex, segment ->
+                                val base = track.name.ifBlank { document.name.ifBlank { context.getString(R.string.imported_gpx_route) } }
+                                val suffix = if (validSegments.size > 1) " (${segmentIndex + 1})" else ""
+                                imported += (base + suffix) to segment
+                            }
+                        }
+                        document.routes.forEachIndexed { index, route ->
+                            if (route.points.size >= 2) {
+                                val name = route.name.ifBlank {
+                                    document.name.ifBlank { context.getString(R.string.imported_gpx_route) + " ${index + 1}" }
+                                }
+                                imported += name to route.points
+                            }
+                        }
+                        require(imported.isNotEmpty()) { "No route with at least two points was found" }
+                        imported.forEach { (name, points) ->
+                            viewModel.saveRoute(name, points.map { RoutePoint(it.latitude, it.longitude) })
+                        }
+                        imported.size
+                    }
+                }
+                result.onSuccess { count ->
+                    Toast.makeText(context, context.getString(R.string.gpx_import_success, count), Toast.LENGTH_LONG).show()
+                }.onFailure {
+                    Toast.makeText(context, context.getString(R.string.gpx_operation_failed), Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -111,6 +208,27 @@ fun SavedRoutesDialog(
                             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                             modifier = Modifier.size(20.dp)
                         )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { importLauncher.launch(arrayOf("application/gpx+xml", "application/xml", "text/xml")) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(stringResource(R.string.gpx_import), fontSize = 13.sp)
+                    }
+                    OutlinedButton(
+                        onClick = { Toast.makeText(context, context.getString(R.string.gpx_export_hint), Toast.LENGTH_SHORT).show() },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = uiState.savedRoutes.isNotEmpty()
+                    ) {
+                        Text(stringResource(R.string.gpx_export_hint), fontSize = 13.sp)
                     }
                 }
 
@@ -247,6 +365,26 @@ fun SavedRoutesDialog(
                                             color = MaterialTheme.colorScheme.onSurface.copy(
                                                 alpha = 0.55f
                                             )
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            if (route.points.size < 2) {
+                                                Toast.makeText(context, context.getString(R.string.gpx_route_too_short), Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                pendingExport = route
+                                                val safeName = route.name.replace(Regex("[^A-Za-z0-9._-]+"), "_").trim('_').ifBlank { "route" }
+                                                exportLauncher.launch("$safeName.gpx")
+                                            }
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.FileDownload,
+                                            contentDescription = stringResource(R.string.gpx_export),
+                                            tint = AccentBlue,
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
 
