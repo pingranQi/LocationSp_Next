@@ -508,4 +508,7 @@
     <string name="trajectory_close_loop_title">إغلاق الحلقة تلقائياً</string>
     <string name="trajectory_close_loop_desc">إذا كانت نقطة النهاية ضمن 15 متراً من نقطة البداية، يتم ربطهما لتصبح المسار حلقة مغلقة بدلاً من العودة بالطريق نفسه.</string>
     <string name="trajectory_locating_origin">جاري تحديد نقطة بداءة دقيقة...</string>
+    <string name="paste_coordinates">لصق الإحداثيات</string>
+    <string name="coordinate_paste_success">تم استيراد الإحداثيات</string>
+    <string name="coordinate_paste_invalid">لا يحتوي الحافظة على إحداثيات مدعومة</string>
 </resources>
