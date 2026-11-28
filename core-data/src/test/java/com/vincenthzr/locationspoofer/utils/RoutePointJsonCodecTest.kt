@@ -34,5 +34,13 @@ class RoutePointJsonCodecTest {
         assertThrows(IllegalArgumentException::class.java) {
             RoutePointJsonCodec.decode(" ".repeat(RoutePointJsonCodec.MAX_BYTES + 1))
         }
+        assertThrows(IllegalArgumentException::class.java) {
+            RoutePointJsonCodec.encode(
+                listOf(
+                    RoutePoint(0.0, 0.0),
+                    RoutePoint(0.0, 1.0, timestampEpochMillis = -1L)
+                )
+            )
+        }
     }
 }
