@@ -19,8 +19,72 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
 // MainViewModel 的路线规划、收藏位置/路线与自动巡航相关扩展函数
+
+private const val MAX_ROUTE_DRAFT_BYTES = 5 * 1024 * 1024
+
+internal fun MainViewModel.restoreRouteDraft() {
+    val raw = settingsRepository.routeDraftJson
+    if (raw.isBlank()) return
+    val points = runCatching {
+        val array = JSONArray(raw)
+        require(array.length() in 1..100_000)
+        List(array.length()) { index ->
+            val item = array.getJSONObject(index)
+            RoutePoint(
+                lat = item.getDouble("lat"),
+                lng = item.getDouble("lng"),
+                waitSec = item.optDouble("waitSec", 0.0),
+                elevationMeters = if (item.has("elevationMeters") && !item.isNull("elevationMeters")) item.getDouble("elevationMeters") else null,
+                timestampEpochMillis = if (item.has("timestampEpochMillis") && !item.isNull("timestampEpochMillis")) item.getLong("timestampEpochMillis") else null
+            )
+        }.also { restored ->
+            restored.forEach { point ->
+                require(point.lat.isFinite() && point.lat in -90.0..90.0)
+                require(point.lng.isFinite() && point.lng in -180.0..180.0)
+                require(point.waitSec.isFinite() && point.waitSec in 0.0..86_400.0)
+                require(point.elevationMeters == null || point.elevationMeters.isFinite())
+            }
+        }
+    }.getOrElse {
+        settingsRepository.routeDraftJson = ""
+        emptyList()
+    }
+    if (points.isNotEmpty()) {
+        _uiState.update {
+            it.copy(
+                routePoints = points,
+                routePlanStage = if (points.size >= 2) RoutePlanStage.READY else RoutePlanStage.SELECTING,
+                routeUndoHistory = emptyList(),
+                routeRedoHistory = emptyList()
+            )
+        }
+    }
+}
+
+private fun MainViewModel.persistRouteDraft() {
+    val points = _uiState.value.routePoints
+    if (points.isEmpty()) {
+        settingsRepository.routeDraftJson = ""
+        return
+    }
+    val encoded = JSONArray().apply {
+        points.forEach { point ->
+            put(
+                JSONObject()
+                    .put("lat", point.lat)
+                    .put("lng", point.lng)
+                    .put("waitSec", point.waitSec)
+                    .put("elevationMeters", point.elevationMeters ?: JSONObject.NULL)
+                    .put("timestampEpochMillis", point.timestampEpochMillis ?: JSONObject.NULL)
+            )
+        }
+    }.toString()
+    settingsRepository.routeDraftJson = if (encoded.toByteArray(Charsets.UTF_8).size <= MAX_ROUTE_DRAFT_BYTES) encoded else ""
+}
 
 private const val MAX_ROUTE_UNDO_STEPS = 50
 
@@ -50,6 +114,7 @@ internal fun MainViewModel.addRoutePoint(lat: Double, lng: Double) {
         if (state.routePoints.size >= 100_000) state
         else state.withRouteEdit(state.routePoints + RoutePoint(lat, lng))
     }
+    persistRouteDraft()
 }
 
 /** 撤销最近一次路线编辑 */
@@ -62,6 +127,7 @@ internal fun MainViewModel.undoLastRoutePoint() {
             routeRedoHistory = (state.routeRedoHistory + listOf(state.routePoints)).takeLast(MAX_ROUTE_UNDO_STEPS)
         )
     }
+    persistRouteDraft()
 }
 
 internal fun MainViewModel.redoRouteEdit() {
@@ -73,6 +139,7 @@ internal fun MainViewModel.redoRouteEdit() {
             routeRedoHistory = state.routeRedoHistory.dropLast(1)
         )
     }
+    persistRouteDraft()
 }
 
 internal fun MainViewModel.removeRoutePoint(index: Int) {
@@ -80,6 +147,7 @@ internal fun MainViewModel.removeRoutePoint(index: Int) {
         if (index !in state.routePoints.indices) state
         else state.withRouteEdit(state.routePoints.toMutableList().also { it.removeAt(index) })
     }
+    persistRouteDraft()
 }
 
 internal fun MainViewModel.moveRoutePoint(fromIndex: Int, toIndex: Int) {
@@ -93,6 +161,7 @@ internal fun MainViewModel.moveRoutePoint(fromIndex: Int, toIndex: Int) {
             state.withRouteEdit(points)
         }
     }
+    persistRouteDraft()
 }
 
 internal fun MainViewModel.setRoutePointWait(index: Int, waitSeconds: Double) {
@@ -105,6 +174,7 @@ internal fun MainViewModel.setRoutePointWait(index: Int, waitSeconds: Double) {
             state.withRouteEdit(points)
         }
     }
+    persistRouteDraft()
 }
 
 /** 结束选点 → READY */
