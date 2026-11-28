@@ -739,4 +739,7 @@
     <string name="route_diag_enabled">已启用</string>
     <string name="route_diag_disabled">已关闭</string>
     <string name="route_playback_progress">播放进度</string>
+    <string name="route_waypoint_wait">停留：%1$d 秒</string>
+    <string name="reduce_wait">减少停留时间</string>
+    <string name="increase_wait">增加停留时间</string>
 </resources>
