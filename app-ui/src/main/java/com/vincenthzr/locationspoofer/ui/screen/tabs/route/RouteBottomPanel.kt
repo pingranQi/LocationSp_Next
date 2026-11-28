@@ -38,6 +38,9 @@ fun RouteBottomPanel(
     onSaveRoute: () -> Unit,
     onStartPlanning: () -> Unit,
     onStopRoute: () -> Unit,
+    isPlaybackPaused: Boolean = false,
+    onPausePlayback: () -> Unit = {},
+    onResumePlayback: () -> Unit = {},
     searchBar: (@Composable (Modifier) -> Unit)? = null
 ) {
     Box(
@@ -224,26 +227,51 @@ fun RouteBottomPanel(
                                     )
                                 }
 
-                                Button(
-                                    onClick = onStopRoute,
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                                        contentColor = MaterialTheme.colorScheme.error
-                                    ),
-                                    modifier = Modifier.height(46.dp)
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        Icons.Rounded.StopCircle,
-                                        null,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        stringResource(R.string.stop_simulation),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.5.sp
-                                    )
+                                    if (uiState.routeRunMode == RouteRunMode.LOOP) {
+                                        OutlinedButton(
+                                            onClick = if (isPlaybackPaused) onResumePlayback else onPausePlayback,
+                                            shape = RoundedCornerShape(14.dp),
+                                            modifier = Modifier.height(46.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp)
+                                        ) {
+                                            Icon(
+                                                if (isPlaybackPaused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                                                null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                stringResource(if (isPlaybackPaused) R.string.route_resume else R.string.route_pause),
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+                                    Button(
+                                        onClick = onStopRoute,
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                                            contentColor = MaterialTheme.colorScheme.error
+                                        ),
+                                        modifier = Modifier.height(46.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.StopCircle,
+                                            null,
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            stringResource(R.string.stop_simulation),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp
+                                        )
+                                    }
                                 }
                             }
                         }
