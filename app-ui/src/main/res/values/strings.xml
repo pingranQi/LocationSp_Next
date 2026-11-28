@@ -742,4 +742,8 @@ Error details: %s</string>
     <string name="route_waypoint_wait">Stop: %1$d sec</string>
     <string name="reduce_wait">Reduce stop duration</string>
     <string name="increase_wait">Increase stop duration</string>
+    <string name="route_diag_paused">Paused</string>
+    <string name="route_diag_playing">Playing</string>
+    <string name="route_diag_available">Available</string>
+    <string name="route_diag_unavailable">Unavailable</string>
 </resources>
