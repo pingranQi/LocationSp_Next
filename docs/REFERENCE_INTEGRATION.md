@@ -41,7 +41,7 @@ License status is a preliminary repository-level review, not legal advice. Befor
 ### P1 — route authoring and playback
 
 - [ ] Unify map tap, address search, waypoint list, and freehand drawing into one route-draft model.
-- [x] Add bounded undo/redo, waypoint deletion/reordering, editable route-point list, and validated local draft autosave/restore. Route simplification with a documented error tolerance and elevation profile display remain open.
+- [x] Add bounded undo/redo, waypoint deletion/reordering, editable route-point list, validated local draft autosave/restore, and Douglas–Peucker simplification at a documented 5 m tolerance. Elevation profile is displayed when route samples contain altitude metadata.
 - [x] Retain the existing deterministic walk/run/cycle/drive profiles and add a playback seek timeline; pause/resume and seek are available from the route panel. Acceleration/deceleration envelopes, dwell-point scheduling, and an exposed reproducible seed remain open.
 - [x] Add pause/resume/seek controls to loop playback; existing route engine supports loop and out-and-back behavior. Mid-session speed adjustment UI and a distinct one-shot mode remain open.
 - [ ] Add dateline, polar, duplicate-point, zero-length, and very-long-route regression coverage.
@@ -62,12 +62,13 @@ This integration does not add stealth, mock-indicator removal, third-party app a
 
 - CoordinateInputParser.kt: independent, pure-Kotlin parser for common coordinate text and map links.
 - CoordinateInputParserTest.kt: parser regression tests for supported formats, malformed input, and range validation.
-- RouteScenarioCodecTest.kt: scenario round-trip, version rejection, coordinate validation, dwell validation, and metadata preservation.
+- RouteScenarioCodecTest.kt: scenario round-trip, version rejection, coordinate/dwell/config validation, and route metadata preservation.
+- RouteSimplifierTest.kt: 5 m simplification, bend retention, and preservation of semantically important waypoints.
 - CoordinateInputCard.kt: clipboard import action with localized English, Chinese, and Arabic feedback.
-- RoutePointEditorDialog.kt, MainViewModelRoute.kt, SettingsManager.kt, and SettingsRepository.kt: bounded undo/redo history, waypoint deletion/reordering, coordinate validation, 5-second dwell-time controls, and local draft autosave/restore with a 5 MiB cap.
+- RoutePointEditorDialog.kt, RouteSimplifier.kt, MainViewModelRoute.kt, SettingsManager.kt, and SettingsRepository.kt: bounded undo/redo, waypoint deletion/reordering, 5-second dwell controls, 5 m Douglas–Peucker simplification preserving dwell/elevation/timestamp points, and local draft autosave/restore with a 5 MiB cap.
 - RouteBottomPanel.kt, MotionController.kt, RoutePath.kt, and Xposed RouteEngine.kt: pause/resume, seek-to-progress, deterministic distance offsets, playback progress, and synchronized waypoint dwell timing.
-- RouteScenarioCodec.kt and SavedRoutesDialog.kt: versioned route scenario import/export, including route geometry, waypoint dwell/elevation/timestamps, speed/run modes, destination behavior, cadence, and pace/fatigue settings.
-- RouteDiagnosticsDialog.kt and RouteTab.kt: runtime diagnostics for route/motion state, distance, speed, coordinates, update interval, UI/motion deviation, mock-environment toggles, root/LSPosed and backend availability; localized in English, Chinese, and Arabic.
+- RouteScenarioCodec.kt and SavedRoutesDialog.kt: versioned route scenario import/export, including route geometry, waypoint dwell/elevation/timestamps, speed/run modes, destination behavior, cadence, pace/fatigue, mock-environment toggles, jitter, altitude, and satellite settings.
+- RouteDiagnosticsDialog.kt and RouteTab.kt: runtime diagnostics for route/motion state, distance, speed, coordinates, elevation profile, update interval, UI/motion deviation, mock-environment toggles, root/LSPosed and backend availability; localized in English, Chinese, and Arabic.
 - MotionControllerTest.kt, RoutePathTest.kt, and RouteEngineTest.kt: regression coverage for seek and waypoint dwell behavior across the app and Xposed engine.
 - MainViewModelRoute.kt: restores an unfinished route draft on startup and persists edits, including dwell/elevation/time metadata.
 - MotionControllerTest.kt: seek behavior and paused-seek regression tests.
