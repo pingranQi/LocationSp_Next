@@ -71,18 +71,21 @@ class RouteSimplifierTest {
 
     @Test
     fun rejectsInvalidWaypointMetadataEvenWhenGeometryWouldBeUnchanged() {
-        assertThrows(IllegalArgumentException::class.java) {
+        val invalidWaitFailure = runCatching {
             RouteSimplifier.simplify(
                 listOf(RoutePoint(0.0, 0.0), RoutePoint(0.0, 0.001, waitSec = Double.NaN)),
                 0.0
             )
-        }
-        assertThrows(IllegalArgumentException::class.java) {
+        }.exceptionOrNull()
+        assertTrue(invalidWaitFailure is IllegalArgumentException)
+
+        val invalidTimestampFailure = runCatching {
             RouteSimplifier.simplify(
                 listOf(RoutePoint(0.0, 0.0), RoutePoint(0.0, 0.001, timestampEpochMillis = -1L)),
                 1.0
             )
-        }
+        }.exceptionOrNull()
+        assertTrue(invalidTimestampFailure is IllegalArgumentException)
     }
 
     @Test
