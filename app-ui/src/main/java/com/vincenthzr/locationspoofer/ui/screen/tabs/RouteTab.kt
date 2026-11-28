@@ -110,6 +110,7 @@ fun RouteTab(
     var showSaveRouteDialog by remember { mutableStateOf(false) }
     var showSavedRoutesDialog by remember { mutableStateOf(false) }
     var showRoutePointEditor by remember { mutableStateOf(false) }
+    var showRouteDiagnostics by remember { mutableStateOf(false) }
     val motionState by viewModel.motionController.state.collectAsState()
 
     // 轨迹保存成功后自动打开路线库弹窗（trajectorySavedCounter 由录制页递增）
@@ -482,6 +483,10 @@ fun RouteTab(
                             onClick = { showSavedRoutesDialog = true }
                         )
                         RouteControlButton(
+                            icon = Icons.Rounded.Info,
+                            onClick = { showRouteDiagnostics = true }
+                        )
+                        RouteControlButton(
                             icon = Icons.Rounded.MyLocation,
                             onClick = {
                                 viewModel.fetchCurrentLocation(context) { lat, lng ->
@@ -716,6 +721,14 @@ fun RouteTab(
             routePoints = routePoints,
             viewModel = viewModel,
             onDismiss = { showSaveRouteDialog = false }
+        )
+    }
+
+    if (showRouteDiagnostics) {
+        RouteDiagnosticsDialog(
+            uiState = uiState,
+            motionState = motionState,
+            onDismiss = { showRouteDiagnostics = false }
         )
     }
 
