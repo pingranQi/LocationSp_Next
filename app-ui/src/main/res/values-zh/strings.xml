@@ -707,4 +707,12 @@
     <string name="gpx_operation_failed">GPX 操作失败，请检查文件格式和访问权限</string>
     <string name="gpx_route_too_short">路线至少需要两个点才能导出</string>
     <string name="imported_gpx_route">导入的 GPX 路线</string>
+    <string name="redo">重做</string>
+    <string name="route_edit_points">编辑路线点</string>
+    <string name="route_edit_points_hint">可调整路点顺序，或从路线中删除路点。</string>
+    <string name="move_up">上移</string>
+    <string name="move_down">下移</string>
+    <string name="remove_waypoint">删除路点</string>
+    <string name="route_pause">暂停</string>
+    <string name="route_resume">继续</string>
 </resources>
