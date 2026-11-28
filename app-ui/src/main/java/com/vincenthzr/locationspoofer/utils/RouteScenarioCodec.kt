@@ -181,6 +181,8 @@ object RouteScenarioCodec {
             require(point.waitSec.isFinite() && point.waitSec in 0.0..86_400.0) { "Waypoint dwell time is out of range" }
             val elevation = point.elevationMeters
             require(elevation == null || elevation.isFinite()) { "Waypoint elevation is invalid" }
+            val timestamp = point.timestampEpochMillis
+            require(timestamp == null || timestamp >= 0L) { "Waypoint timestamp is invalid" }
         }
         require(scenario.customSpeedMs.isFinite() && scenario.customSpeedMs in 0.1..100.0) { "Custom speed is out of range" }
         require(scenario.stepCadenceSpm in 30..300) { "Step cadence is out of range" }
