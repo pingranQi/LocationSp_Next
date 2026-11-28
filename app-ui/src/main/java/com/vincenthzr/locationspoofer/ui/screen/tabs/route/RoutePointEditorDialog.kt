@@ -11,6 +11,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,7 +32,8 @@ fun RoutePointEditorDialog(
     points: List<RoutePoint>,
     onDismiss: () -> Unit,
     onMove: (Int, Int) -> Unit,
-    onRemove: (Int) -> Unit
+    onRemove: (Int) -> Unit,
+    onWaitChange: (Int, Double) -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -54,6 +57,23 @@ fun RoutePointEditorDialog(
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodySmall
                             )
+                            Text(
+                                stringResource(R.string.route_waypoint_wait, point.waitSec.toInt()),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            IconButton(
+                                onClick = { onWaitChange(index, (point.waitSec - 5.0).coerceAtLeast(0.0)) },
+                                enabled = point.waitSec > 0.0
+                            ) {
+                                Icon(Icons.Rounded.Remove, contentDescription = stringResource(R.string.reduce_wait))
+                            }
+                            IconButton(
+                                onClick = { onWaitChange(index, (point.waitSec + 5.0).coerceAtMost(86_400.0)) },
+                                enabled = point.waitSec < 86_400.0
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.increase_wait))
+                            }
                             IconButton(onClick = { if (index > 0) onMove(index, index - 1) }, enabled = index > 0) {
                                 Icon(Icons.Rounded.ArrowUpward, contentDescription = stringResource(R.string.move_up))
                             }
