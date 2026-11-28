@@ -78,7 +78,8 @@ object RouteScenarioCodec {
         val enableJitter: Boolean = true,
         val altitudeInput: String = "0.0",
         val altitudeVariationM: Int = 10,
-        val satelliteCountInput: String = "20"
+        val satelliteCountInput: String = "20",
+        val coordinateSystem: String = "WGS84"
     )
 
     fun encode(scenario: Scenario): String {
