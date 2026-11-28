@@ -44,6 +44,7 @@ import com.vincenthzr.locationspoofer.viewmodel.MainViewModel
 import com.vincenthzr.locationspoofer.viewmodel.deleteSavedRoute
 import com.vincenthzr.locationspoofer.viewmodel.loadSavedRoute
 import com.vincenthzr.locationspoofer.viewmodel.saveRoute
+import com.vincenthzr.locationspoofer.viewmodel.saveRoutes
 import com.vincenthzr.locationspoofer.viewmodel.setRouteRunMode
 import com.vincenthzr.locationspoofer.viewmodel.setRouteSimMode
 import com.vincenthzr.locationspoofer.viewmodel.setCustomSpeedMs
