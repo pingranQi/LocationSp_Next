@@ -8,6 +8,7 @@ import com.vincenthzr.locationspoofer.data.model.GithubRelease
 import com.vincenthzr.locationspoofer.ui.BuildConfig
 import com.vincenthzr.locationspoofer.utils.UpdateManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +37,7 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
         const val MAX_RELEASE_RESPONSE_BYTES = 5L * 1024L * 1024L
     }
 
+    private var downloadMonitorJob: Job? = null
     private val _uiState = MutableStateFlow(UpdateUiState())
     val uiState: StateFlow<UpdateUiState> = _uiState.asStateFlow()
 
@@ -152,6 +154,21 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
             return
         }
         try {
+            // A second download replaces the first; cancel its poller and DownloadManager entry.
+            downloadMonitorJob?.cancel()
+            downloadMonitorJob = null
+            _uiState.value.activeDownloadId?.let { previousId ->
+                runCatching { updateManager.cancelDownload(previousId) }
+            }
+            _uiState.update {
+                it.copy(
+                    activeDownloadId = null,
+                    activeDownloadUrl = null,
+                    activeDownloadSha256 = null,
+                    downloadProgress = 0,
+                    downloadStatus = DownloadManager.STATUS_PENDING
+                )
+            }
             val fileName = "LocationSpoofer_${versionName.replace(Regex("[^A-Za-z0-9._-]"), "_")}.apk"
             val downloadId = updateManager.downloadApk(url, fileName)
             _uiState.update {
@@ -171,17 +188,20 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
     }
 
     private fun monitorDownload(downloadId: Long) {
-        viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
+        downloadMonitorJob?.cancel()
+        downloadMonitorJob = viewModelScope.launch(Dispatchers.IO) {
+            while (_uiState.value.activeDownloadId == downloadId) {
                 val status = updateManager.getDownloadStatus(downloadId)
                 val progress = updateManager.getDownloadProgress(downloadId)
 
                 withContext(Dispatchers.Main) {
-                    _uiState.update {
-                        it.copy(
-                            downloadStatus = status,
-                            downloadProgress = progress
-                        )
+                    if (_uiState.value.activeDownloadId == downloadId) {
+                        _uiState.update {
+                            it.copy(
+                                downloadStatus = status,
+                                downloadProgress = progress
+                            )
+                        }
                     }
                 }
 
@@ -210,8 +230,10 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
     }
 
     fun cancelDownload() {
+        downloadMonitorJob?.cancel()
+        downloadMonitorJob = null
         _uiState.value.activeDownloadId?.let { downloadId ->
-            updateManager.cancelDownload(downloadId)
+            runCatching { updateManager.cancelDownload(downloadId) }
             _uiState.update {
                 it.copy(
                     activeDownloadId = null,
