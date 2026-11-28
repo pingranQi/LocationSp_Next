@@ -22,28 +22,76 @@ import kotlinx.coroutines.withContext
 
 // MainViewModel 的路线规划、收藏位置/路线与自动巡航相关扩展函数
 
+private const val MAX_ROUTE_UNDO_STEPS = 50
+
+private fun AppState.withRouteEdit(points: List<RoutePoint>): AppState =
+    copy(
+        routeUndoHistory = (routeUndoHistory + listOf(routePoints)).takeLast(MAX_ROUTE_UNDO_STEPS),
+        routeRedoHistory = emptyList(),
+        routePoints = points.toList()
+    )
+
 internal fun MainViewModel.enterRoutePlanning() {
     _uiState.update {
         it.copy(
             routePlanStage = RoutePlanStage.SELECTING,
             selectedCollectionRouteId = null,
-            routePoints = emptyList()
+            routePoints = emptyList(),
+            routeUndoHistory = emptyList(),
+            routeRedoHistory = emptyList()
         )
     }
 }
 
 /** 地图中心确认添加路点 */
-
 internal fun MainViewModel.addRoutePoint(lat: Double, lng: Double) {
-    _uiState.update { it.copy(routePoints = it.routePoints + RoutePoint(lat, lng)) }
+    if (!lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) return
+    _uiState.update { state ->
+        if (state.routePoints.size >= 100_000) state
+        else state.withRouteEdit(state.routePoints + RoutePoint(lat, lng))
+    }
 }
 
-/** 撤销最后一个路点 */
-
+/** 撤销最近一次路线编辑 */
 internal fun MainViewModel.undoLastRoutePoint() {
     _uiState.update { state ->
-        if (state.routePoints.isEmpty()) state
-        else state.copy(routePoints = state.routePoints.dropLast(1))
+        val previous = state.routeUndoHistory.lastOrNull() ?: return@update state
+        state.copy(
+            routePoints = previous,
+            routeUndoHistory = state.routeUndoHistory.dropLast(1),
+            routeRedoHistory = (state.routeRedoHistory + listOf(state.routePoints)).takeLast(MAX_ROUTE_UNDO_STEPS)
+        )
+    }
+}
+
+internal fun MainViewModel.redoRouteEdit() {
+    _uiState.update { state ->
+        val next = state.routeRedoHistory.lastOrNull() ?: return@update state
+        state.copy(
+            routePoints = next,
+            routeUndoHistory = (state.routeUndoHistory + listOf(state.routePoints)).takeLast(MAX_ROUTE_UNDO_STEPS),
+            routeRedoHistory = state.routeRedoHistory.dropLast(1)
+        )
+    }
+}
+
+internal fun MainViewModel.removeRoutePoint(index: Int) {
+    _uiState.update { state ->
+        if (index !in state.routePoints.indices) state
+        else state.withRouteEdit(state.routePoints.toMutableList().also { it.removeAt(index) })
+    }
+}
+
+internal fun MainViewModel.moveRoutePoint(fromIndex: Int, toIndex: Int) {
+    _uiState.update { state ->
+        if (fromIndex !in state.routePoints.indices || toIndex !in state.routePoints.indices || fromIndex == toIndex) {
+            state
+        } else {
+            val points = state.routePoints.toMutableList()
+            val point = points.removeAt(fromIndex)
+            points.add(toIndex, point)
+            state.withRouteEdit(points)
+        }
     }
 }
 
@@ -61,7 +109,9 @@ internal fun MainViewModel.restartSelectingPoints() {
         it.copy(
             routePoints = emptyList(),
             routePlanStage = RoutePlanStage.SELECTING,
-            selectedCollectionRouteId = null
+            selectedCollectionRouteId = null,
+            routeUndoHistory = emptyList(),
+            routeRedoHistory = emptyList()
         )
     }
 }
