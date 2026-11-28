@@ -41,17 +41,17 @@ License status is a preliminary repository-level review, not legal advice. Befor
 ### P1 — route authoring and playback
 
 - [ ] Unify map tap, address search, waypoint list, and freehand drawing into one route-draft model.
-- [ ] Add undo/redo, draft autosave, route simplification with a documented error tolerance, and elevation profile display.
-- [ ] Add deterministic walk/cycle/drive motion profiles with acceleration, deceleration, dwell points, and a reproducible random seed.
-- [ ] Add pause/resume/seek/speed control and explicit single-run, loop, and out-and-back modes.
+- [x] Add bounded undo/redo, waypoint deletion/reordering, and an editable route-point list. Draft autosave, route simplification with a documented error tolerance, and elevation profile display remain open.
+- [x] Retain the existing deterministic walk/run/cycle/drive profiles and add a playback seek timeline; pause/resume and seek are available from the route panel. Acceleration/deceleration envelopes, dwell-point scheduling, and an exposed reproducible seed remain open.
+- [x] Add pause/resume/seek controls to loop playback; existing route engine supports loop and out-and-back behavior. Mid-session speed adjustment UI and a distinct one-shot mode remain open.
 - [ ] Add dateline, polar, duplicate-point, zero-length, and very-long-route regression coverage.
 
 ### P2 — scenario and test tooling
 
-- [ ] Introduce a scenario bundle containing start point, route, playback profile, coordinate-system metadata, and expected checkpoints.
+- [x] Introduce a versioned scenario bundle containing route points and playback/simulation settings. Start-point metadata, explicit coordinate-system metadata, and expected checkpoints remain open.
 - [ ] Add a local test receiver/sample app that reports Android mock-provider metadata and callback timing for QA.
 - [ ] Add a replay report comparing expected route samples with observed callback samples (distance, time drift, dropped callbacks).
-- [ ] Add backend capability diagnostics and a clear stop/restore state machine.
+- [x] Add route runtime diagnostics for simulation state, motion state, route length, speed, current coordinates, and environment simulation toggles. Backend permission/capability diagnostics and a full stop/restore state machine remain open.
 - [ ] Add accessibility checks, UI tests, and Android-version/ROM compatibility matrix.
 
 ### Explicit non-goals
@@ -63,6 +63,11 @@ This integration does not add stealth, mock-indicator removal, third-party app a
 - CoordinateInputParser.kt: independent, pure-Kotlin parser for common coordinate text and map links.
 - CoordinateInputParserTest.kt: parser regression tests for supported formats, malformed input, and range validation.
 - CoordinateInputCard.kt: clipboard import action with localized English, Chinese, and Arabic feedback.
+- RoutePointEditorDialog.kt and MainViewModelRoute.kt: bounded undo/redo history, waypoint deletion, reordering, and coordinate validation.
+- RouteBottomPanel.kt and MotionController.kt: pause/resume and seek-to-progress controls, with deterministic distance offsets and progress reporting.
+- RouteScenarioCodec.kt and SavedRoutesDialog.kt: versioned route scenario import/export, including route geometry, speed/run modes, destination behavior, cadence, and pace/fatigue settings.
+- RouteDiagnosticsDialog.kt and RouteTab.kt: runtime diagnostics for route and mock-environment state, localized in English, Chinese, and Arabic.
+- MotionControllerTest.kt: seek behavior and paused-seek regression tests.
 - GpxCodec.kt: bounded GPX 1.0/1.1 parser and GPX 1.1 writer, preserving track segments, timestamps, elevation, routes, and waypoints.
 - GpxCodecTest.kt: GPX round-trip, metadata, segment, validation, size-limit, and XXE regression tests.
 - SavedRoutesDialog.kt: GPX document-picker import and individual saved-route export, with localized feedback.
