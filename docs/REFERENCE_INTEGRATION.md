@@ -34,7 +34,7 @@ License status is a preliminary repository-level review, not legal advice. Befor
 - [x] Reject non-finite and out-of-range coordinates; preserve input values without guessing a datum conversion.
 - [x] Wire parser into the coordinate-entry UI with a clipboard paste action and localized feedback. A coordinate-system selector remains required before any automatic datum conversion.
 - [x] Add a bounded, XXE-safe GPX 1.0/1.1 codec with segment, timestamp, elevation, route and waypoint preservation plus round-trip tests.
-- [x] Add GPX file import to the route library and per-route GPX export using Android document picker APIs. Track segments are imported as separate saved routes to avoid joining disconnected segments.
+- [x] Add GPX file import to the route library and per-route GPX export using Android document picker APIs. Track segments are imported as separate saved routes to avoid joining disconnected segments; route point elevation and timestamps are preserved in the internal model and GPX export.
 - [ ] Add versioned JSON backup migration tests, partial-import preview, and atomic restore/rollback.
 - [ ] Add duplicate-name handling, route metadata, tags, favorites, and stable ordering.
 
@@ -62,11 +62,13 @@ This integration does not add stealth, mock-indicator removal, third-party app a
 
 - CoordinateInputParser.kt: independent, pure-Kotlin parser for common coordinate text and map links.
 - CoordinateInputParserTest.kt: parser regression tests for supported formats, malformed input, and range validation.
+- RouteScenarioCodecTest.kt: scenario round-trip, version rejection, coordinate validation, dwell validation, and metadata preservation.
 - CoordinateInputCard.kt: clipboard import action with localized English, Chinese, and Arabic feedback.
-- RoutePointEditorDialog.kt and MainViewModelRoute.kt: bounded undo/redo history, waypoint deletion, reordering, and coordinate validation.
-- RouteBottomPanel.kt and MotionController.kt: pause/resume and seek-to-progress controls, with deterministic distance offsets and progress reporting.
-- RouteScenarioCodec.kt and SavedRoutesDialog.kt: versioned route scenario import/export, including route geometry, speed/run modes, destination behavior, cadence, and pace/fatigue settings.
-- RouteDiagnosticsDialog.kt and RouteTab.kt: runtime diagnostics for route and mock-environment state, localized in English, Chinese, and Arabic.
+- RoutePointEditorDialog.kt and MainViewModelRoute.kt: bounded undo/redo history, waypoint deletion/reordering, coordinate validation, and 5-second dwell-time controls.
+- RouteBottomPanel.kt, MotionController.kt, RoutePath.kt, and Xposed RouteEngine.kt: pause/resume, seek-to-progress, deterministic distance offsets, playback progress, and synchronized waypoint dwell timing.
+- RouteScenarioCodec.kt and SavedRoutesDialog.kt: versioned route scenario import/export, including route geometry, waypoint dwell/elevation/timestamps, speed/run modes, destination behavior, cadence, and pace/fatigue settings.
+- RouteDiagnosticsDialog.kt and RouteTab.kt: runtime diagnostics for route/motion state, distance, speed, coordinates, mock-environment toggles, and backend availability; localized in English, Chinese, and Arabic.
+- MotionControllerTest.kt, RoutePathTest.kt, and RouteEngineTest.kt: regression coverage for seek and waypoint dwell behavior across the app and Xposed engine.
 - MotionControllerTest.kt: seek behavior and paused-seek regression tests.
 - GpxCodec.kt: bounded GPX 1.0/1.1 parser and GPX 1.1 writer, preserving track segments, timestamps, elevation, routes, and waypoints.
 - GpxCodecTest.kt: GPX round-trip, metadata, segment, validation, size-limit, and XXE regression tests.
