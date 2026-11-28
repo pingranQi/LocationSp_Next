@@ -243,6 +243,9 @@ private fun rewriteLocationArgs(
     }
 }
 
+internal fun shouldReleaseOneShotLocationCallback(methodName: String, isOneShotRegistration: Boolean): Boolean =
+    methodName == "onLocation" && isOneShotRegistration
+
 /** 找到目标监听者/回调对象类之后，Hook 一次，按实例身份决定要不要改写投递内容 */
 private fun LocationHooker.ensureCallbackHooked(callback: Any, vararg deliveryMethodNames: String) {
     val clazz = callback.javaClass
@@ -254,8 +257,10 @@ private fun LocationHooker.ensureCallbackHooked(callback: Any, vararg deliveryMe
                 val binder = (callbackInstance as? IInterface)?.asBinder() ?: (callbackInstance as? IBinder)
                 // Only getCurrentLocation's ILocationCallback is one-shot.
                 // ILocationListener also delivers onLocation repeatedly and must remain tracked.
-                val oneShot = methodName == "onLocation" &&
+                val oneShot = shouldReleaseOneShotLocationCallback(
+                    methodName,
                     binder != null && activeCallbackBinders.containsKey(binder)
+                )
                 try {
                     val config = readConfig()
                     val isGlobal = config?.optBoolean("system_hook_global_mode", false) == true
