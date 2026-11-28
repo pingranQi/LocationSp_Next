@@ -105,6 +105,7 @@ internal fun MainViewModel.enterRoutePlanning() {
             routeRedoHistory = emptyList()
         )
     }
+    persistRouteDraft()
 }
 
 /** 地图中心确认添加路点 */
@@ -196,6 +197,7 @@ internal fun MainViewModel.restartSelectingPoints() {
             routeRedoHistory = emptyList()
         )
     }
+    persistRouteDraft()
 }
 
 /** 设置路线运行模式（同时写盘，下次打开沿用，见 issue #4） */
@@ -525,6 +527,7 @@ internal fun MainViewModel.cancelRoutePlanning() {
             routeRedoHistory = emptyList()
         )
     }
+    persistRouteDraft()
 }
 
 internal fun MainViewModel.stopRoutePlanning() {
@@ -540,9 +543,12 @@ internal fun MainViewModel.stopRoutePlanning() {
             it.copy(
                 isSpoofingActive = false,
                 routePlanStage = RoutePlanStage.IDLE,
-                routePoints = emptyList()
+                routePoints = emptyList(),
+                routeUndoHistory = emptyList(),
+                routeRedoHistory = emptyList()
             )
         }
+        persistRouteDraft()
     }
 }
 
@@ -705,6 +711,7 @@ internal fun MainViewModel.loadSavedRoute(route: com.vincenthzr.locationspoofer.
             routePlanStage = com.vincenthzr.locationspoofer.data.model.RoutePlanStage.READY
         )
     }
+    persistRouteDraft()
 }
 
 // 搜索
