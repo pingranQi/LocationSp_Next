@@ -42,7 +42,7 @@ object GpxCodec {
         val waypoints: List<Point> = emptyList()
     ) {
         val pointCount: Int
-            get() = tracks.sumOf { track -> track.segments.sumOf(List<Point>::size) } +
+            get() = tracks.sumOf { track -> track.segments.sumOf { segment -> segment.size } } +
                 routes.sumOf { it.points.size } + waypoints.size
     }
 
@@ -86,9 +86,9 @@ object GpxCodec {
             total++
             require(total <= MAX_POINTS) { "GPX document contains more than $MAX_POINTS points" }
 
-            val elevation = element.directChild("ele")?.textContent?.trim()?.takeIf(String::isNotEmpty)
-                ?.toDoubleOrNull()
-            require(elevation == null || elevation.isFinite()) { "Elevation is invalid" }
+            val elevationText = element.directChild("ele")?.textContent?.trim()?.takeIf(String::isNotEmpty)
+            val elevation = elevationText?.toDoubleOrNull()
+            require(elevationText == null || elevation != null && elevation.isFinite()) { "Elevation is invalid" }
             val timeText = element.directChild("time")?.textContent?.trim()?.takeIf(String::isNotEmpty)
             val time = timeText?.let {
                 try {
@@ -114,7 +114,7 @@ object GpxCodec {
         }
         val waypoints = root.directChildren("wpt").map(::point)
         return Document(
-            name = root.directChild("name")?.textContent?.trim().orEmpty(),
+            name = root.directChild("metadata")?.directChild("name")?.textContent?.trim().orEmpty(),
             tracks = tracks,
             routes = routes,
             waypoints = waypoints
