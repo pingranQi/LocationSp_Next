@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - "audit/**"
+      - "feature/**"
   workflow_dispatch:
 
 permissions:
