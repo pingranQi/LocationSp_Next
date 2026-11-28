@@ -115,6 +115,7 @@ class MotionController(
 
     // ---- 路线会话
     private var path: RoutePath? = null
+    private var routePoints: List<RoutePoint> = emptyList()
     private var stopAtDestination = false
     private var routeStartTs = 0L
     private var routeOffset = 0.0
@@ -176,9 +177,10 @@ class MotionController(
         startTimestamp: Long,
         startPaused: Boolean = false
     ) {
-        val routePath = RoutePath(points.map { LatLng(it.lat, it.lng) })
+        val routePath = RoutePath(points.map { LatLng(it.lat, it.lng) }, points.map { it.waitSec })
         if (!routePath.isValid) return
         path = routePath
+        routePoints = points.toList()
         this.stopAtDestination = stopAtDestination
         routeStartTs = startTimestamp
         routeOffset = 0.0
@@ -368,6 +370,7 @@ class MotionController(
 
     private fun clearRoute() {
         path = null
+        routePoints = emptyList()
         routeOffset = 0.0
         pausePoint = null
         SpoofingState.routeDistanceOffset = 0.0
@@ -424,7 +427,8 @@ class MotionController(
      */
     private fun traveledAt(now: Long): Double {
         val elapsed = (now - routeStartTs).coerceAtLeast(0L) / 1000.0
-        return paceProfile().distanceAfter(routeOffset, elapsed)
+        val routePath = path ?: return routeOffset
+        return routePath.distanceAfter(paceProfile(), routeOffset, elapsed, stopAtDestination)
     }
 
     private fun ensureTicking() {
@@ -446,9 +450,11 @@ class MotionController(
             s.mode == Mode.ROUTE -> {
                 val routePath = path ?: return
                 val profile = paceProfile()
-                val traveled = traveledAt(now)
+                val elapsed = (now - routeStartTs).coerceAtLeast(0L) / 1000.0
+                val progress = routePath.progressAfter(profile, routeOffset, elapsed, stopAtDestination)
+                val traveled = progress.distanceM
                 val pos = routePath.positionAt(traveled, stopAtDestination)
-                val speed = if (pos.arrived) 0.0 else profile.speedAt(profile.elapsedAt(traveled))
+                val speed = if (progress.isDwelling || pos.arrived) 0.0 else profile.speedAt(profile.elapsedAt(traveled))
                 _state.update { it.copy(lat = pos.lat, lng = pos.lng, bearing = pos.bearing, speedMs = speed, distanceTraveledM = traveled) }
             }
 
@@ -518,7 +524,7 @@ class MotionController(
         SpoofingState.routeDistanceOffset = offset
         SpoofingState.isRouteMode = true
         SpoofingState.simMode = s.preset.name
-        val points = routePath.points.map { RoutePoint(it.lat, it.lng) }
+        val points = routePoints
         val stop = stopAtDestination
         enqueueWrite { sink.writeRoute(s.lat, s.lng, s.bearing, s.preset, points, start, offset, stop) }
     }
