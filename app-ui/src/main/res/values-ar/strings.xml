@@ -519,4 +519,12 @@
     <string name="gpx_operation_failed">فشلت عملية GPX. تحقق من صلاحية الملف وإمكانية الوصول إليه.</string>
     <string name="gpx_route_too_short">يجب أن يحتوي المسار على نقطتين على الأقل للتصدير</string>
     <string name="imported_gpx_route">مسار GPX مستورد</string>
+    <string name="redo">إعادة</string>
+    <string name="route_edit_points">تعديل نقاط المسار</string>
+    <string name="route_edit_points_hint">غيّر ترتيب النقاط أو احذف نقاطًا من المسار.</string>
+    <string name="move_up">تحريك لأعلى</string>
+    <string name="move_down">تحريك لأسفل</string>
+    <string name="remove_waypoint">إزالة نقطة</string>
+    <string name="route_pause">إيقاف مؤقت</string>
+    <string name="route_resume">استئناف</string>
 </resources>
