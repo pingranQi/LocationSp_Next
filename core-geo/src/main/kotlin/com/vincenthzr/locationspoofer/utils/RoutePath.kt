@@ -74,12 +74,12 @@ class RoutePath(points: List<LatLng>) {
 
     data class Position(val lat: Double, val lng: Double, val bearing: Float, val arrived: Boolean)
 
-    private val cumulative: DoubleArray = DoubleArray(points.size).also { cum ->
-        for (i in 1 until points.size) cum[i] = cum[i - 1] + GeoMath.distance(points[i - 1], points[i])
+    private val cumulative: DoubleArray = DoubleArray(this.points.size).also { cum ->
+        for (i in 1 until this.points.size) cum[i] = cum[i - 1] + GeoMath.distance(this.points[i - 1], this.points[i])
     }
 
     val totalDistance: Double = if (points.isEmpty()) 0.0 else cumulative.last()
-    val isClosedLoop: Boolean = points.size >= 2 && GeoMath.distance(points.first(), points.last()) <= 5.0
+    val isClosedLoop: Boolean = this.points.size >= 2 && GeoMath.distance(this.points.first(), this.points.last()) <= 5.0
     val isValid: Boolean get() = points.size >= 2 && totalDistance > 0.0
 
     /**
