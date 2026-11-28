@@ -110,6 +110,46 @@ class RoutePathTest {
     }
 
     @Test
+    fun `holds at a waypoint for its configured dwell duration`() {
+        val middle = GeoMath.destination(a, 90.0, 500.0)
+        val end = GeoMath.destination(a, 90.0, 1000.0)
+        val path = RoutePath(listOf(a, middle, end), listOf(0.0, 10.0, 0.0))
+        val profile = PaceProfile.fromConfig(
+            baseSpeedMps = 2.0,
+            paceVariationSec = 0.0,
+            fatigueLevel = 0,
+            firstKmBiasSec = 0.0,
+            seed = 42L
+        )
+
+        val duringWait = path.progressAfter(profile, 0.0, 255.0, stopAtDestination = false)
+        assertEquals(500.0, duringWait.distanceM, 0.5)
+        assertTrue(duringWait.isDwelling)
+
+        val afterWait = path.progressAfter(profile, 0.0, 265.0, stopAtDestination = false)
+        assertEquals(510.0, afterWait.distanceM, 0.5)
+        assertFalse(afterWait.isDwelling)
+    }
+
+    @Test
+    fun `applies waypoint dwell again on the return leg`() {
+        val middle = GeoMath.destination(a, 90.0, 500.0)
+        val end = GeoMath.destination(a, 90.0, 1000.0)
+        val path = RoutePath(listOf(a, middle, end), listOf(0.0, 10.0, 0.0))
+        val profile = PaceProfile.fromConfig(
+            baseSpeedMps = 2.0,
+            paceVariationSec = 0.0,
+            fatigueLevel = 0,
+            firstKmBiasSec = 0.0,
+            seed = 42L
+        )
+
+        val returnWait = path.progressAfter(profile, 0.0, 765.0, stopAtDestination = false)
+        assertEquals(1500.0, returnWait.distanceM, 0.5)
+        assertTrue(returnWait.isDwelling)
+    }
+
+    @Test
     fun `stops at the destination when requested`() {
         val path = RoutePath(listOf(a, b))
         val end = path.positionAt(5000.0, stopAtDestination = true)
