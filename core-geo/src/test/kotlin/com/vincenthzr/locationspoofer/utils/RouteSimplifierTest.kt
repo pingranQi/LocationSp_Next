@@ -35,6 +35,10 @@ class RouteSimplifierTest {
         val simplified = RouteSimplifier.simplify(points, 5.0)
         assertTrue(simplified.size >= 3)
         assertTrue(simplified.any { it.waitSec == 15.0 && it.elevationMeters == 12.0 && it.timestampEpochMillis == 1234L })
+
+        val collinearMetadata = RoutePoint(east.lat, east.lng, waitSec = 5.0)
+        val straight = RouteSimplifier.simplify(listOf(points.first(), collinearMetadata, points.last()), 5.0)
+        assertTrue(straight.contains(collinearMetadata))
     }
 
     @Test
