@@ -86,5 +86,16 @@ class RouteScenarioCodecTest {
         assertThrows(IllegalArgumentException::class.java) {
             RouteScenarioCodec.encode(invalidWait)
         }
+
+        val invalidTimestamp = RouteScenarioCodec.Scenario(
+            name = "bad timestamp",
+            points = listOf(
+                RoutePoint(0.0, 0.0),
+                RoutePoint(0.0, 1.0, timestampEpochMillis = -1L)
+            )
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            RouteScenarioCodec.encode(invalidTimestamp)
+        }
     }
 }
