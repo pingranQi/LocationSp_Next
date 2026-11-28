@@ -97,10 +97,11 @@ class MotionController(
         /** 录制已结束、等待命名保存的路线 */
         val hasPendingRecording: Boolean = false,
         val distanceTraveledM: Double = 0.0,
-        val routeCycleDistanceM: Double = 0.0
+        val routeCycleDistanceM: Double = 0.0,
+        val stopAtDestination: Boolean = false
     ) {
         val playbackProgress: Float
-            get() = if (routeCycleDistanceM <= 0.0) 0f else ((distanceTraveledM % routeCycleDistanceM) / routeCycleDistanceM).toFloat().coerceIn(0f, 1f)
+            get() = if (routeCycleDistanceM <= 0.0) 0f else if (stopAtDestination) (distanceTraveledM / routeCycleDistanceM).toFloat().coerceIn(0f, 1f) else ((distanceTraveledM % routeCycleDistanceM) / routeCycleDistanceM).toFloat().coerceIn(0f, 1f)
         val active: Boolean get() = mode != Mode.IDLE
         /** 路线自动播放或走回暂停点期间，摇杆不响应 */
         val joystickEnabled: Boolean get() = active && mode != Mode.ROUTE && !returning
@@ -200,7 +201,8 @@ class MotionController(
                 returning = false,
                 preset = preset,
                 distanceTraveledM = 0.0,
-                routeCycleDistanceM = if (stopAtDestination || routePath.isClosedLoop) routePath.totalDistance else routePath.totalDistance * 2.0
+                routeCycleDistanceM = if (stopAtDestination || routePath.isClosedLoop) routePath.totalDistance else routePath.totalDistance * 2.0,
+                stopAtDestination = stopAtDestination
             )
         }
         invalidateProfile()
@@ -217,7 +219,7 @@ class MotionController(
         joyIntensity = 0f
         pendingWrite = null
         if (_state.value.recording) finishRecording()
-        _state.update { it.copy(mode = Mode.IDLE, speedMs = 0.0, hasRoute = false, paused = false, returning = false, distanceTraveledM = 0.0, routeCycleDistanceM = 0.0) }
+        _state.update { it.copy(mode = Mode.IDLE, speedMs = 0.0, hasRoute = false, paused = false, returning = false, distanceTraveledM = 0.0, routeCycleDistanceM = 0.0, stopAtDestination = false) }
         tickJob?.cancel()
         tickJob = null
     }
@@ -257,7 +259,7 @@ class MotionController(
         pauseDistance = traveled
         pausePoint = LatLng(pos.lat, pos.lng)
         joyIntensity = 0f
-        _state.update { it.copy(mode = Mode.MANUAL, lat = pos.lat, lng = pos.lng, bearing = pos.bearing, speedMs = 0.0, paused = true, distanceTraveledM = traveled) }
+        _state.update { it.copy(mode = Mode.MANUAL, lat = pos.lat, lng = pos.lng, bearing = pos.bearing, speedMs = 0.0, paused = true, distanceTraveledM = if (stopAtDestination) traveled.coerceAtMost(routePath.totalDistance) else traveled) }
         requestManualWrite(pos.lat, pos.lng, pos.bearing, 0.0, now)
     }
 
