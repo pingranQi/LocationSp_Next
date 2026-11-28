@@ -720,4 +720,22 @@ Error details: %s</string>
     <string name="scenario_import_success">Scenario imported and saved to route library</string>
     <string name="scenario_export_success">Scenario exported</string>
     <string name="scenario_operation_failed">Scenario operation failed. Check the file format and contents.</string>
+    <string name="route_diagnostics">Route diagnostics</string>
+    <string name="route_diagnostics_desc">Live status and route consistency checks</string>
+    <string name="route_diag_simulation">Location simulation</string>
+    <string name="route_diag_motion">Motion state</string>
+    <string name="route_diag_waypoints">Waypoints</string>
+    <string name="route_diag_distance">Route distance</string>
+    <string name="route_diag_speed">Current speed</string>
+    <string name="route_diag_location">Current coordinates</string>
+    <string name="route_diag_mock_wifi">Wi-Fi environment simulation</string>
+    <string name="route_diag_mock_cell">Cell environment simulation</string>
+    <string name="route_diag_mock_bluetooth">Bluetooth environment simulation</string>
+    <string name="route_diag_fetching">Route provider request is in progress.</string>
+    <string name="route_diag_need_points">Add at least two waypoints before starting.</string>
+    <string name="route_diag_zero_length">Route points have no measurable distance.</string>
+    <string name="route_diag_active">Active</string>
+    <string name="route_diag_inactive">Inactive</string>
+    <string name="route_diag_enabled">Enabled</string>
+    <string name="route_diag_disabled">Disabled</string>
 </resources>
