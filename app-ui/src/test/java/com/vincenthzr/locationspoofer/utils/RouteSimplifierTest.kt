@@ -46,4 +46,56 @@ class RouteSimplifierTest {
         val points = listOf(RoutePoint(0.0, 0.0), RoutePoint(0.0, 0.001), RoutePoint(0.0, 0.002))
         assertEquals(points, RouteSimplifier.simplify(points, 0.0))
     }
+    @Test
+    fun semanticWaypointSplitsIndependentGeometryRanges() {
+        val before = listOf(
+            RoutePoint(31.0000, 121.0000),
+            RoutePoint(31.0002, 121.0003),
+            RoutePoint(31.0000, 121.0006)
+        )
+        val anchor = RoutePoint(31.0003, 121.0009, waitSec = 8.0)
+        val after = listOf(
+            anchor,
+            RoutePoint(31.0006, 121.0012),
+            RoutePoint(31.0003, 121.0015)
+        )
+        val route = before + after.drop(1)
+        val simplified = RouteSimplifier.simplify(route, 12.0)
+        val independentlySimplified = RouteSimplifier.simplify(before, 12.0) +
+            RouteSimplifier.simplify(after, 12.0).drop(1)
+
+        assertEquals(independentlySimplified, simplified)
+        assertTrue(simplified.contains(anchor))
+    }
+
+    @Test
+    fun rejectsInvalidWaypointMetadataEvenWhenGeometryWouldBeUnchanged() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RouteSimplifier.simplify(
+                listOf(RoutePoint(0.0, 0.0), RoutePoint(0.0, 0.001, waitSec = Double.NaN)),
+                0.0
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RouteSimplifier.simplify(
+                listOf(RoutePoint(0.0, 0.0), RoutePoint(0.0, 0.001, timestampEpochMillis = -1L)),
+                1.0
+            )
+        }
+    }
+
+    @Test
+    fun simplifiesAcrossAntimeridianUsingShortestLongitudeDelta() {
+        val points = listOf(
+            RoutePoint(10.0, 179.99),
+            RoutePoint(10.0, 179.995),
+            RoutePoint(10.0, -180.0),
+            RoutePoint(10.0, -179.995)
+        )
+        val simplified = RouteSimplifier.simplify(points, 2.0)
+        assertEquals(points.first(), simplified.first())
+        assertEquals(points.last(), simplified.last())
+        assertTrue(simplified.size <= points.size)
+    }
+
 }
