@@ -61,6 +61,7 @@ import com.vincenthzr.locationspoofer.utils.RouteScenarioCodec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import androidx.compose.runtime.rememberCoroutineScope
 
 @Composable
@@ -87,7 +88,7 @@ fun SavedRoutesDialog(
             scope.launch {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
-                        val points = route.points.map { GpxCodec.Point(it.lat, it.lng) }
+                        val points = route.points.map { point -> GpxCodec.Point(point.lat, point.lng, point.elevationMeters, point.timestampEpochMillis?.let(Instant::ofEpochMilli)) }
                         val xml = GpxCodec.writeTrack(route.name, listOf(points))
                         context.contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use {
                             it.write(xml)
@@ -214,7 +215,7 @@ fun SavedRoutesDialog(
                         }
                         require(imported.isNotEmpty()) { "No route with at least two points was found" }
                         imported.forEach { (name, points) ->
-                            viewModel.saveRoute(name, points.map { RoutePoint(it.latitude, it.longitude) })
+                            viewModel.saveRoute(name, points.map { RoutePoint(it.latitude, it.longitude, elevationMeters = it.elevationMeters, timestampEpochMillis = it.time?.toEpochMilli()) })
                         }
                         imported.size
                     }
