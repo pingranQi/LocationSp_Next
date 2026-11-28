@@ -56,6 +56,13 @@ import com.vincenthzr.locationspoofer.viewmodel.setPaceVariationSec
 import com.vincenthzr.locationspoofer.viewmodel.setFatigueLevel
 import com.vincenthzr.locationspoofer.viewmodel.setFirstKmBiasSec
 import com.vincenthzr.locationspoofer.viewmodel.setFatigueStartKm
+import com.vincenthzr.locationspoofer.viewmodel.setAltitude
+import com.vincenthzr.locationspoofer.viewmodel.setAltitudeVariation
+import com.vincenthzr.locationspoofer.viewmodel.setSatelliteCount
+import com.vincenthzr.locationspoofer.viewmodel.toggleMockWifi
+import com.vincenthzr.locationspoofer.viewmodel.toggleMockCell
+import com.vincenthzr.locationspoofer.viewmodel.toggleMockBluetooth
+import com.vincenthzr.locationspoofer.viewmodel.toggleEnableJitter
 import com.vincenthzr.locationspoofer.utils.GpxCodec
 import com.vincenthzr.locationspoofer.utils.RouteScenarioCodec
 import kotlinx.coroutines.Dispatchers
@@ -167,6 +174,13 @@ fun SavedRoutesDialog(
                     viewModel.setFatigueLevel(scenario.fatigueLevel)
                     viewModel.setFirstKmBiasSec(scenario.firstKmBiasSec)
                     viewModel.setFatigueStartKm(scenario.fatigueStartKm)
+                    if (uiState.mockWifi != scenario.mockWifi) viewModel.toggleMockWifi()
+                    if (uiState.mockCell != scenario.mockCell) viewModel.toggleMockCell()
+                    if (uiState.mockBluetooth != scenario.mockBluetooth) viewModel.toggleMockBluetooth()
+                    if (uiState.enableJitter != scenario.enableJitter) viewModel.toggleEnableJitter()
+                    viewModel.setAltitude(scenario.altitudeInput)
+                    viewModel.setAltitudeVariation(scenario.altitudeVariationM)
+                    viewModel.setSatelliteCount(scenario.satelliteCountInput)
                     Toast.makeText(context, context.getString(R.string.scenario_import_success), Toast.LENGTH_LONG).show()
                 }.onFailure {
                     Toast.makeText(context, context.getString(R.string.scenario_operation_failed), Toast.LENGTH_LONG).show()
@@ -492,7 +506,14 @@ fun SavedRoutesDialog(
                                                     paceVariationSec = uiState.paceVariationSec,
                                                     fatigueLevel = uiState.fatigueLevel,
                                                     firstKmBiasSec = uiState.firstKmBiasSec,
-                                                    fatigueStartKm = uiState.fatigueStartKm
+                                                    fatigueStartKm = uiState.fatigueStartKm,
+                                                    mockWifi = uiState.mockWifi,
+                                                    mockCell = uiState.mockCell,
+                                                    mockBluetooth = uiState.mockBluetooth,
+                                                    enableJitter = uiState.enableJitter,
+                                                    altitudeInput = uiState.altitudeInput,
+                                                    altitudeVariationM = uiState.altitudeVariationM,
+                                                    satelliteCountInput = uiState.satelliteCountInput
                                                 )
                                                 val safeName = route.name.replace(Regex("[^A-Za-z0-9._-]+"), "_").trim('_').ifBlank { "scenario" }
                                                 scenarioExportLauncher.launch("$safeName.scenario.json")
