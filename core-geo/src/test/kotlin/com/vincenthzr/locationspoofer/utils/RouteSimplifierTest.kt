@@ -28,8 +28,8 @@ class RouteSimplifierTest {
         val end = GeoMath.destination(start, 90.0, 200.0)
         val points = listOf(
             RoutePoint(start.lat, start.lng),
-            RoutePoint(east.lat, east.lng, waitSec = 15.0, elevationMeters = 12.0, timestampEpochMillis = 1234L),
-            RoutePoint(north.lat, north.lng),
+            RoutePoint(east.lat, east.lng),
+            RoutePoint(north.lat, north.lng, waitSec = 15.0, elevationMeters = 12.0, timestampEpochMillis = 1234L),
             RoutePoint(end.lat, end.lng)
         )
         val simplified = RouteSimplifier.simplify(points, 5.0)
