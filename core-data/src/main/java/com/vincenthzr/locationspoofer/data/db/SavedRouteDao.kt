@@ -9,10 +9,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SavedRouteDao {
-    @Query("SELECT * FROM saved_routes ORDER BY timestamp DESC")
+    @Query("SELECT * FROM saved_routes ORDER BY timestamp DESC, id DESC")
     fun getAllSavedRoutes(): Flow<List<SavedRouteEntity>>
 
-    @Query("SELECT * FROM saved_routes ORDER BY timestamp DESC")
+    @Query("SELECT * FROM saved_routes ORDER BY timestamp DESC, id DESC")
     suspend fun getAllSavedRoutesList(): List<SavedRouteEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
