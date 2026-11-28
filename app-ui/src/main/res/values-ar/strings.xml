@@ -550,4 +550,5 @@
     <string name="route_diag_inactive">غير نشط</string>
     <string name="route_diag_enabled">مفعل</string>
     <string name="route_diag_disabled">معطل</string>
+    <string name="route_playback_progress">تقدم التشغيل</string>
 </resources>
