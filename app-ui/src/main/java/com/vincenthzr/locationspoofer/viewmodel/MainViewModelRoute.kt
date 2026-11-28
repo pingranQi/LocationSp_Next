@@ -31,6 +31,7 @@ internal fun MainViewModel.restoreRouteDraft() {
     if (raw.isBlank()) return
     val points = runCatching {
         val array = JSONArray(raw)
+        require(raw.toByteArray(Charsets.UTF_8).size <= MAX_ROUTE_DRAFT_BYTES)
         require(array.length() in 1..100_000)
         List(array.length()) { index ->
             val item = array.getJSONObject(index)
@@ -57,7 +58,7 @@ internal fun MainViewModel.restoreRouteDraft() {
         _uiState.update {
             it.copy(
                 routePoints = points,
-                routePlanStage = if (points.size >= 2) RoutePlanStage.READY else RoutePlanStage.SELECTING,
+                routePlanStage = RoutePlanStage.SELECTING,
                 routeUndoHistory = emptyList(),
                 routeRedoHistory = emptyList()
             )
