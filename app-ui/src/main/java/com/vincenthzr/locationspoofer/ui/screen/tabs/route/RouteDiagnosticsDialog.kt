@@ -28,8 +28,11 @@ fun RouteDiagnosticsDialog(
     val distanceMeters = points.zipWithNext().sumOf { (a, b) ->
         GeoMath.distance(CoordinateUtils.LatLng(a.lat, a.lng), CoordinateUtils.LatLng(b.lat, b.lng))
     }
-    val currentLat = uiState.latitudeInput.toDoubleOrNull()
-    val currentLng = uiState.longitudeInput.toDoubleOrNull()
+    val currentLat = uiState.latitudeInput.toDoubleOrNull()?.takeIf { it.isFinite() }
+    val currentLng = uiState.longitudeInput.toDoubleOrNull()?.takeIf { it.isFinite() }
+    val routeDeviation = if (currentLat != null && currentLng != null && motionState.lat.isFinite() && motionState.lng.isFinite()) {
+        GeoMath.distance(CoordinateUtils.LatLng(currentLat, currentLng), CoordinateUtils.LatLng(motionState.lat, motionState.lng))
+    } else null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -45,6 +48,13 @@ fun RouteDiagnosticsDialog(
                 DiagnosticRow(stringResource(R.string.route_diag_waypoints), points.size.toString())
                 DiagnosticRow(stringResource(R.string.route_diag_distance), String.format(java.util.Locale.US, "%.2f km", distanceMeters / 1000.0))
                 DiagnosticRow(stringResource(R.string.route_diag_speed), String.format(java.util.Locale.US, "%.2f m/s", motionState.speedMs))
+                DiagnosticRow(stringResource(R.string.route_diag_update_interval), motionState.lastUpdateIntervalMs.toString() + " ms")
+                DiagnosticRow(
+                    stringResource(R.string.route_diag_route_deviation),
+                    routeDeviation?.let { String.format(java.util.Locale.US, "%.2f m", it) } ?: "—"
+                )
+                DiagnosticRow(stringResource(R.string.route_diag_root_access), if (uiState.hasRootAccess) stringResource(R.string.route_diag_available) else stringResource(R.string.route_diag_unavailable))
+                DiagnosticRow(stringResource(R.string.route_diag_xposed), if (uiState.isLSPosedActive) stringResource(R.string.route_diag_active) else stringResource(R.string.route_diag_inactive))
                 DiagnosticRow(
                     stringResource(R.string.route_diag_location),
                     if (currentLat != null && currentLng != null) String.format(java.util.Locale.US, "%.6f, %.6f", currentLat, currentLng) else "—"
