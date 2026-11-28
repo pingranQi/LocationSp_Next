@@ -37,7 +37,7 @@ fun RouteDiagnosticsDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.route_diagnostics_desc), style = MaterialTheme.typography.bodySmall)
-                DiagnosticRow(stringResource(R.string.route_diag_simulation), if (uiState.isSpoofingActive) stringResource(R.string.status_active) else stringResource(R.string.status_inactive))
+                DiagnosticRow(stringResource(R.string.route_diag_simulation), if (uiState.isSpoofingActive) stringResource(R.string.route_diag_active) else stringResource(R.string.route_diag_inactive))
                 DiagnosticRow(
                     stringResource(R.string.route_diag_motion),
                     motionState.mode.name + " · " + if (motionState.paused) stringResource(R.string.route_pause) else stringResource(R.string.route_resume)
@@ -49,7 +49,7 @@ fun RouteDiagnosticsDialog(
                     stringResource(R.string.route_diag_location),
                     if (currentLat != null && currentLng != null) String.format(java.util.Locale.US, "%.6f, %.6f", currentLat, currentLng) else "—"
                 )
-                DiagnosticRow(stringResource(R.string.route_diag_mock_wifi), if (uiState.mockWifi) stringResource(R.string.status_enabled) else stringResource(R.string.status_disabled))
+                DiagnosticRow(stringResource(R.string.route_diag_mock_wifi), if (uiState.mockWifi) stringResource(R.string.route_diag_enabled) else stringResource(R.string.route_diag_disabled))
                 DiagnosticRow(stringResource(R.string.route_diag_mock_cell), if (uiState.mockCell) stringResource(R.string.status_enabled) else stringResource(R.string.status_disabled))
                 DiagnosticRow(stringResource(R.string.route_diag_mock_bluetooth), if (uiState.mockBluetooth) stringResource(R.string.status_enabled) else stringResource(R.string.status_disabled))
                 if (uiState.isFetchingRoute) {
