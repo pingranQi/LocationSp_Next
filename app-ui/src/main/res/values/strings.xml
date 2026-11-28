@@ -707,4 +707,12 @@ Error details: %s</string>
     <string name="gpx_operation_failed">GPX operation failed. Check that the file is valid and accessible.</string>
     <string name="gpx_route_too_short">A route needs at least two points to export</string>
     <string name="imported_gpx_route">Imported GPX route</string>
+    <string name="redo">Redo</string>
+    <string name="route_edit_points">Edit route points</string>
+    <string name="route_edit_points_hint">Move points to change route order, or remove points from the route.</string>
+    <string name="move_up">Move up</string>
+    <string name="move_down">Move down</string>
+    <string name="remove_waypoint">Remove waypoint</string>
+    <string name="route_pause">Pause</string>
+    <string name="route_resume">Resume</string>
 </resources>
