@@ -77,3 +77,12 @@ This integration does not add stealth, mock-indicator removal, third-party app a
 - SavedRoutesDialog.kt: GPX document-picker import and individual saved-route export, with localized feedback.
 
 No reference repository's source files have been copied into this branch.
+
+### 继续完善：路线库一致性与语义路点（2026-11-28）
+
+- GPX 多路线/多轨迹段导入先完成完整解析与校验，再通过 Room 批量 `@Insert` 一次提交；任一条路线编码或校验失败时不会写入部分导入结果。
+- `SavedRoute` 暴露稳定 Room ID，删除操作不再按名称猜测实体，允许同名路线独立删除。
+- 路线库 Flow 使用 `RoutePointJsonCodec` 恢复完整路点元数据，不再在 UI 状态映射阶段丢弃停留时间、海拔和时间戳。
+- `RouteSimplifier` 以含停留/海拔/时间戳的语义路点为分段锚点，在每个锚点区间独立执行 Douglas–Peucker，避免跨越必保留路点简化几何。
+- 新增简化器测试覆盖语义锚点分段、无效元数据和跨日期变更线场景。
+- 路线 JSON 编解码器兼容历史仅含经纬度的数据格式，并对文件大小、点数、坐标、停留时间和海拔做校验。
