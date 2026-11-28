@@ -16,10 +16,6 @@
 
 package com.vincenthzr.locationspoofer.xposed.hooks.network
 
-private val bleScanReportDelayMillis = ConcurrentHashMap<Any, Long>()
-
-internal fun shouldBatchBleResults(reportDelayMillis: Long): Boolean = reportDelayMillis > 0L
-
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -29,6 +25,10 @@ import org.json.JSONObject
 import kotlin.random.Random
 import java.util.concurrent.ConcurrentHashMap
 import io.github.libxposed.api.*
+
+private val bleScanReportDelayMillis = ConcurrentHashMap<Any, Long>()
+
+internal fun shouldBatchBleResults(reportDelayMillis: Long): Boolean = reportDelayMillis > 0L
 
 /**
  * 蓝牙 LE 扫描环境伪造模块入口，以及扫描结果的回调派发/定时器。
