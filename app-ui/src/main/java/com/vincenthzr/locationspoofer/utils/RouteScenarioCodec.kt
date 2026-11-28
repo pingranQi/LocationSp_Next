@@ -179,7 +179,8 @@ object RouteScenarioCodec {
             require(point.lat.isFinite() && point.lat in -90.0..90.0) { "Latitude is out of range" }
             require(point.lng.isFinite() && point.lng in -180.0..180.0) { "Longitude is out of range" }
             require(point.waitSec.isFinite() && point.waitSec in 0.0..86_400.0) { "Waypoint dwell time is out of range" }
-            require(point.elevationMeters == null || point.elevationMeters.isFinite()) { "Waypoint elevation is invalid" }
+            val elevation = point.elevationMeters
+            require(elevation == null || elevation.isFinite()) { "Waypoint elevation is invalid" }
         }
         require(scenario.customSpeedMs.isFinite() && scenario.customSpeedMs in 0.1..100.0) { "Custom speed is out of range" }
         require(scenario.stepCadenceSpm in 30..300) { "Step cadence is out of range" }
