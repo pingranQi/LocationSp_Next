@@ -50,7 +50,7 @@ fun RouteDiagnosticsDialog(
                     if (currentLat != null && currentLng != null) String.format(java.util.Locale.US, "%.6f, %.6f", currentLat, currentLng) else "—"
                 )
                 DiagnosticRow(stringResource(R.string.route_diag_mock_wifi), (if (uiState.mockWifi) stringResource(R.string.route_diag_enabled) else stringResource(R.string.route_diag_disabled)) + " · " + (if (uiState.canMockWifi) stringResource(R.string.route_diag_available) else stringResource(R.string.route_diag_unavailable)))
-                DiagnosticRow(stringResource(R.string.route_diag_mock_cell), if (uiState.mockCell) stringResource(R.string.status_enabled) else stringResource(R.string.status_disabled))
+                DiagnosticRow(stringResource(R.string.route_diag_mock_cell), (if (uiState.mockCell) stringResource(R.string.route_diag_enabled) else stringResource(R.string.route_diag_disabled)) + " · " + (if (uiState.canMockCell) stringResource(R.string.route_diag_available) else stringResource(R.string.route_diag_unavailable)))
                 DiagnosticRow(stringResource(R.string.route_diag_mock_bluetooth), (if (uiState.mockBluetooth) stringResource(R.string.route_diag_enabled) else stringResource(R.string.route_diag_disabled)) + " · " + (if (uiState.canMockBluetooth) stringResource(R.string.route_diag_available) else stringResource(R.string.route_diag_unavailable)))
                 if (uiState.isFetchingRoute) {
                     Text(stringResource(R.string.route_diag_fetching), color = MaterialTheme.colorScheme.primary)
