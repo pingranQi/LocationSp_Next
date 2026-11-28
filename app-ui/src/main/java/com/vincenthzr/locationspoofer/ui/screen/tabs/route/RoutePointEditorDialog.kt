@@ -50,7 +50,7 @@ fun RoutePointEditorDialog(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = "\${index + 1}.  \${"%.6f".format(point.lat)}, \${"%.6f".format(point.lng)}",
+                                text = (index + 1).toString() + ".  " + String.format(java.util.Locale.US, "%.6f", point.lat) + ", " + String.format(java.util.Locale.US, "%.6f", point.lng),
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodySmall
                             )
