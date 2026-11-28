@@ -277,6 +277,12 @@ class SettingsRepository(private val settingsManager: SettingsManager) {
             settingsManager.routeCustomSpeedMs = value
         }
 
+    var routeDraftJson: String
+        get() = settingsManager.routeDraftJson
+        set(value) {
+            settingsManager.routeDraftJson = value
+        }
+
     /** 最后一次选定的地图位置（GCJ-02），未保存过时返回 null */
     fun getLastMapPosition(): Pair<String, String>? {
         val lat = settingsManager.lastMapLat
