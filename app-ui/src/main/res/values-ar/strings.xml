@@ -551,4 +551,7 @@
     <string name="route_diag_enabled">مفعل</string>
     <string name="route_diag_disabled">معطل</string>
     <string name="route_playback_progress">تقدم التشغيل</string>
+    <string name="route_waypoint_wait">توقف: %1$d ثانية</string>
+    <string name="reduce_wait">تقليل مدة التوقف</string>
+    <string name="increase_wait">زيادة مدة التوقف</string>
 </resources>
