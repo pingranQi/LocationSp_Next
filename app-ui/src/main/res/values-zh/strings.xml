@@ -753,4 +753,5 @@
     <string name="route_simplify">简化路线（5 米误差）</string>
     <string name="route_diag_elevation_profile">海拔剖面</string>
     <string name="route_diag_no_elevation">此路线没有可用的海拔采样数据。</string>
+    <string name="coordinate_input_datum">粘贴坐标系</string>
 </resources>
