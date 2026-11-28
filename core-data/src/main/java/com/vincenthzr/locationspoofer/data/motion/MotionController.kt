@@ -98,7 +98,9 @@ class MotionController(
         val hasPendingRecording: Boolean = false,
         val distanceTraveledM: Double = 0.0,
         val routeCycleDistanceM: Double = 0.0,
-        val stopAtDestination: Boolean = false
+        val stopAtDestination: Boolean = false,
+        val lastUpdateIntervalMs: Long = 0L,
+        val lastUpdateTimestampMs: Long = 0L
     ) {
         val playbackProgress: Float
             get() = if (routeCycleDistanceM <= 0.0) 0f else if (stopAtDestination) (distanceTraveledM / routeCycleDistanceM).toFloat().coerceIn(0f, 1f) else ((distanceTraveledM % routeCycleDistanceM) / routeCycleDistanceM).toFloat().coerceIn(0f, 1f)
@@ -444,7 +446,14 @@ class MotionController(
 
     internal fun tick(now: Long) {
         val dt = ((now - lastTickTs).coerceIn(0L, 1000L)) / 1000.0
+        val previousTick = lastTickTs
         lastTickTs = now
+        _state.update {
+            it.copy(
+                lastUpdateIntervalMs = if (previousTick > 0L) (now - previousTick).coerceAtLeast(0L) else 0L,
+                lastUpdateTimestampMs = now
+            )
+        }
         val s = _state.value
         when {
             s.mode == Mode.ROUTE -> {
