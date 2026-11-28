@@ -562,4 +562,5 @@
     <string name="route_diag_route_deviation">انحراف موضع الواجهة عن الحركة</string>
     <string name="route_diag_root_access">صلاحية Root</string>
     <string name="route_diag_xposed">حالة LSPosed</string>
+    <string name="route_simplify">تبسيط المسار (5 م)</string>
 </resources>
