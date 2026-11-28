@@ -754,4 +754,5 @@ Error details: %s</string>
     <string name="route_diag_elevation_profile">Elevation profile</string>
     <string name="route_diag_no_elevation">No elevation samples are available for this route.</string>
     <string name="coordinate_input_datum">Paste datum</string>
+    <string name="done">Done</string>
 </resources>
