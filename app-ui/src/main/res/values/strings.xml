@@ -738,4 +738,5 @@ Error details: %s</string>
     <string name="route_diag_inactive">Inactive</string>
     <string name="route_diag_enabled">Enabled</string>
     <string name="route_diag_disabled">Disabled</string>
+    <string name="route_playback_progress">Playback progress</string>
 </resources>
