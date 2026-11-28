@@ -693,7 +693,12 @@ internal fun LocationHooker.startBleTimer(
 
         // 立即执行第一次；queued callbacks are discarded after stop/replacement.
         val config = readConfig()
-        if (config != null && config.optBoolean("active", false) && config.optBoolean("mock_bluetooth", true)) {
+        // Immediate callbacks are valid only for reportDelay=0. Batched scans wait for their first window.
+        if (safeReportDelay == 0L &&
+            config != null &&
+            config.optBoolean("active", false) &&
+            config.optBoolean("mock_bluetooth", true)
+        ) {
             deliverBleScanResults(config, callback, cl, isCurrentScan)
         }
 
