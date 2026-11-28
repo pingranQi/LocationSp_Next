@@ -511,4 +511,12 @@
     <string name="paste_coordinates">لصق الإحداثيات</string>
     <string name="coordinate_paste_success">تم استيراد الإحداثيات</string>
     <string name="coordinate_paste_invalid">لا يحتوي الحافظة على إحداثيات مدعومة</string>
+    <string name="gpx_import">استيراد GPX</string>
+    <string name="gpx_export_hint">التصدير من عنصر المسار</string>
+    <string name="gpx_export">تصدير GPX</string>
+    <string name="gpx_import_success">تم استيراد %1$d مسار</string>
+    <string name="gpx_export_success">تم تصدير GPX</string>
+    <string name="gpx_operation_failed">فشلت عملية GPX. تحقق من صلاحية الملف وإمكانية الوصول إليه.</string>
+    <string name="gpx_route_too_short">يجب أن يحتوي المسار على نقطتين على الأقل للتصدير</string>
+    <string name="imported_gpx_route">مسار GPX مستورد</string>
 </resources>
