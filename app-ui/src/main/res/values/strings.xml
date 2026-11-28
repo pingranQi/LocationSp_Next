@@ -697,7 +697,7 @@ Error details: %s</string>
     <string name="trajectory_close_loop_desc">When the end point is within 15 m of the start point, connect them so the route loops instead of doubling back.</string>
     <string name="trajectory_locating_origin">Locating a precise start point...</string>
     <string name="paste_coordinates">Paste coordinates</string>
-    <string name="coordinate_paste_success">Coordinates imported</string>
+    <string name="coordinate_paste_success">Coordinates imported as WGS84</string>
     <string name="coordinate_paste_invalid">Clipboard does not contain a supported coordinate</string>
     <string name="gpx_import">Import GPX</string>
     <string name="gpx_export_hint">Export from route item</string>
