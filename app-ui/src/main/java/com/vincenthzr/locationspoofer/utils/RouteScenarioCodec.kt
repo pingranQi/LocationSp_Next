@@ -38,6 +38,8 @@ object RouteScenarioCodec {
                     .put("lat", point.lat)
                     .put("lng", point.lng)
                     .put("waitSec", point.waitSec)
+                    .put("elevationMeters", point.elevationMeters ?: JSONObject.NULL)
+                    .put("timestampEpochMillis", point.timestampEpochMillis ?: JSONObject.NULL)
             )
         }
         return JSONObject()
@@ -72,7 +74,9 @@ object RouteScenarioCodec {
             RoutePoint(
                 lat = item.getDouble("lat"),
                 lng = item.getDouble("lng"),
-                waitSec = item.optDouble("waitSec", 0.0)
+                waitSec = item.optDouble("waitSec", 0.0),
+                elevationMeters = if (item.has("elevationMeters") && !item.isNull("elevationMeters")) item.getDouble("elevationMeters") else null,
+                timestampEpochMillis = if (item.has("timestampEpochMillis") && !item.isNull("timestampEpochMillis")) item.getLong("timestampEpochMillis") else null
             )
         }
         val scenario = Scenario(
@@ -104,6 +108,7 @@ object RouteScenarioCodec {
             require(point.lat.isFinite() && point.lat in -90.0..90.0) { "Latitude is out of range" }
             require(point.lng.isFinite() && point.lng in -180.0..180.0) { "Longitude is out of range" }
             require(point.waitSec.isFinite() && point.waitSec in 0.0..86_400.0) { "Waypoint dwell time is out of range" }
+            require(point.elevationMeters == null || point.elevationMeters.isFinite()) { "Waypoint elevation is invalid" }
         }
         require(scenario.customSpeedMs.isFinite() && scenario.customSpeedMs in 0.1..100.0) { "Custom speed is out of range" }
         require(scenario.stepCadenceSpm in 30..300) { "Step cadence is out of range" }
