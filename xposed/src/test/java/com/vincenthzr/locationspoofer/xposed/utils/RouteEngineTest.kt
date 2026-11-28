@@ -103,6 +103,32 @@ class RouteEngineTest {
         assertTrue(atStart.speed > 0f)
     }
 
+    @Test
+    fun `route engine honors waypoint dwell time from shared route timeline`() {
+        val route = JSONArray().apply {
+            put(JSONObject().put("lat", 0.0).put("lng", 0.0).put("waitSec", 0.0))
+            put(JSONObject().put("lat", 0.0).put("lng", 0.0045).put("waitSec", 10.0))
+            put(JSONObject().put("lat", 0.0).put("lng", 0.0090).put("waitSec", 0.0))
+        }
+        fun config() = JSONObject().apply {
+            put("is_route_mode", true)
+            put("route_points", route)
+            put("speed_m_s", 2.0)
+            put("start_timestamp", 1_000L)
+            put("pace_variation_sec", 0)
+            put("fatigue_level", 0)
+            put("first_km_bias_sec", 0)
+        }
+
+        val duringWait = RouteEngine.calculateCurrentPosition(config(), now = 256_000L)
+        assertEquals(0.0045, duringWait.lng, 0.0001)
+        assertEquals(0f, duringWait.speed, 1e-6f)
+
+        val afterWait = RouteEngine.calculateCurrentPosition(config(), now = 266_000L)
+        assertTrue(afterWait.lng > duringWait.lng)
+        assertEquals(2f, afterWait.speed, 1e-5f)
+    }
+
     private fun joystickConfig(speed: Double, bearing: Double, startTimestamp: Long) = JSONObject().apply {
         put("is_route_mode", false)
         put("sim_mode", "JOYSTICK")
